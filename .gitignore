@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# Sensitive files
+cookies.txt
+settings.json
+
+# IDE settings
+.vscode/
+.idea/
+
+# Environment
+.env
+venv/
+env/ 
