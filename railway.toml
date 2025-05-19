@@ -1,0 +1,9 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "NEVER"
+
+[cron]
+schedule = "*/10 * * * *"  # Runs every 10 minutes 
