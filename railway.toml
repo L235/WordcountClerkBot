@@ -1,9 +1,0 @@
-[build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-
-[deploy]
-restartPolicyType = "NEVER"
-
-[cron]
-schedule = "*/15 * * * *"  # Runs every 15 minutes 
