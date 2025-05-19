@@ -63,10 +63,21 @@ logging.basicConfig(
 
 def load_settings(path: str = "settings.json") -> dict:
     """Load JSON settings file. If missing, raise an explicit error."""
+    logging.info("Loading settings from %s", path)
     if not os.path.exists(path):
         raise FileNotFoundError(f"Settings file '{path}' not found.")
+    
     with open(path) as f:
-        return json.load(f)
+        settings = json.load(f)
+    
+    # Debug output
+    logging.info("Loaded settings:")
+    for key in ["site", "path", "user", "ua", "cookie_path", "arca_page", "target_page"]:
+        if key in settings:
+            logging.info("  %s: %s", key, settings[key])
+    logging.info("  bot_password: %s", "set" if settings.get("bot_password") else "not set")
+    
+    return settings
 
 
 SETTINGS = load_settings()
