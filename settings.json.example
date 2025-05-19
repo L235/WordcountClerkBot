@@ -1,0 +1,15 @@
+{
+  "site": "en.wikipedia.org",
+  "path": "/w/",
+  "user": "BotUser@PasswordName",
+  "bot_password": "{{BOT_PASSWORD}}",
+  "ua": "KevinClerkBot/0.5 (https://github.com/L235/WordcountClerkBot)",
+  "cookie_path": "/app/cookies/cookies.txt",
+  "arca_page": "Wikipedia:Arbitration/Requests/Clarification and Amendment",
+  "target_page": "User:KevinClerkBot/ARCA word counts",
+  "default_limit": 500,
+  "run_interval": 600,
+  "over_factor": 1.10,
+  "red_hex": "#ffcccc",
+  "placeholder_heading": "statement by {other-editor}"
+} 

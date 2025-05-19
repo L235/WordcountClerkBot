@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY arca_wordcount_bot.py .
-COPY settings.json .
+COPY settings.json.example settings.json
 
 # Create directory for cookies
 RUN mkdir -p /app/cookies
