@@ -49,9 +49,12 @@ import requests
 #  Logging
 # -------------------------------------------------------------------------
 logging.basicConfig(
-    filename="arca_wordcount_bot.log",
-    format="%(asctime)s %(levelname)s %(message)s",
     level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler("arca_wordcount_bot.log"),
+        logging.StreamHandler()  # This will log to stderr
+    ]
 )
 
 # -------------------------------------------------------------------------

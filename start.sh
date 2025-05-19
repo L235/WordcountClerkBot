@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -x  # Print commands and their arguments as they are executed
+
 # Generate settings.json from environment variables
 cat > settings.json << EOF
 {
@@ -20,11 +22,14 @@ cat > settings.json << EOF
 EOF
 
 # Debug output
-echo "Environment variables:"
-echo "BOT_USER: ${BOT_USER:-not set}"
-echo "BOT_PASSWORD: ${BOT_PASSWORD:+set}${BOT_PASSWORD:-not set}"
-echo "SITE: ${SITE:-en.wikipedia.org}"
-echo "API_PATH: ${API_PATH:-/w/}"
+echo "=== Environment Variables ===" >&2
+echo "BOT_USER: ${BOT_USER:-not set}" >&2
+echo "BOT_PASSWORD: ${BOT_PASSWORD:+set}${BOT_PASSWORD:-not set}" >&2
+echo "SITE: ${SITE:-en.wikipedia.org}" >&2
+echo "API_PATH: ${API_PATH:-/w/}" >&2
+echo "=== Settings File Contents ===" >&2
+cat settings.json >&2
+echo "=== End Settings File ===" >&2
 
 # Run the bot
 exec python arca_wordcount_bot.py "$@" 
