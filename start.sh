@@ -1,13 +1,5 @@
 #!/bin/sh
 
-echo "=== Starting container ===" >&2
-echo "Current directory: $(pwd)" >&2
-echo "Directory contents:" >&2
-ls -la >&2
-
-echo "=== Environment variables ===" >&2
-env | sort >&2
-
 # Validate required environment variables
 if [ -z "$BOT_USER" ]; then
     echo "ERROR: BOT_USER environment variable is not set" >&2
@@ -19,12 +11,7 @@ if [ -z "$BOT_PASSWORD" ]; then
     exit 1
 fi
 
-echo "=== Required variables are set ===" >&2
-echo "BOT_USER is set to: ${BOT_USER}" >&2
-echo "BOT_PASSWORD is set (length: ${#BOT_PASSWORD})" >&2
-
 # Generate settings.json from environment variables
-echo "=== Generating settings.json ===" >&2
 cat > settings.json << EOF
 {
   "site": "${SITE:-en.wikipedia.org}",
@@ -43,9 +30,5 @@ cat > settings.json << EOF
 }
 EOF
 
-echo "=== Settings file contents ===" >&2
-cat settings.json >&2
-echo "=== End settings file ===" >&2
-
-echo "=== Starting bot ===" >&2
+# Run the bot
 exec python arca_wordcount_bot.py "$@" 
