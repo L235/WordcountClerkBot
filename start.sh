@@ -1,20 +1,30 @@
 #!/bin/sh
 
-set -e  # Exit on any error
-set -x  # Print commands and their arguments as they are executed
+echo "=== Starting container ===" >&2
+echo "Current directory: $(pwd)" >&2
+echo "Directory contents:" >&2
+ls -la >&2
+
+echo "=== Environment variables ===" >&2
+env | sort >&2
 
 # Validate required environment variables
 if [ -z "$BOT_USER" ]; then
-    echo "Error: BOT_USER environment variable is not set" >&2
+    echo "ERROR: BOT_USER environment variable is not set" >&2
     exit 1
 fi
 
 if [ -z "$BOT_PASSWORD" ]; then
-    echo "Error: BOT_PASSWORD environment variable is not set" >&2
+    echo "ERROR: BOT_PASSWORD environment variable is not set" >&2
     exit 1
 fi
 
+echo "=== Required variables are set ===" >&2
+echo "BOT_USER is set to: ${BOT_USER}" >&2
+echo "BOT_PASSWORD is set (length: ${#BOT_PASSWORD})" >&2
+
 # Generate settings.json from environment variables
+echo "=== Generating settings.json ===" >&2
 cat > settings.json << EOF
 {
   "site": "${SITE:-en.wikipedia.org}",
@@ -33,15 +43,9 @@ cat > settings.json << EOF
 }
 EOF
 
-# Debug output
-echo "=== Environment Variables ===" >&2
-echo "BOT_USER: ${BOT_USER}" >&2
-echo "BOT_PASSWORD: ${BOT_PASSWORD:+set}${BOT_PASSWORD:-not set}" >&2
-echo "SITE: ${SITE:-en.wikipedia.org}" >&2
-echo "API_PATH: ${API_PATH:-/w/}" >&2
-echo "=== Settings File Contents ===" >&2
+echo "=== Settings file contents ===" >&2
 cat settings.json >&2
-echo "=== End Settings File ===" >&2
+echo "=== End settings file ===" >&2
 
-# Run the bot
+echo "=== Starting bot ===" >&2
 exec python arca_wordcount_bot.py "$@" 
