@@ -19,5 +19,12 @@ cat > settings.json << EOF
 }
 EOF
 
+# Debug output
+echo "Environment variables:"
+echo "BOT_USER: ${BOT_USER:-not set}"
+echo "BOT_PASSWORD: ${BOT_PASSWORD:+set}${BOT_PASSWORD:-not set}"
+echo "SITE: ${SITE:-en.wikipedia.org}"
+echo "API_PATH: ${API_PATH:-/w/}"
+
 # Run the bot
 exec python arca_wordcount_bot.py "$@" 

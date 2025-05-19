@@ -106,8 +106,17 @@ def connect() -> mwclient.Site:
         clients_useragent=USER_AGENT,
         pool=sess,
     )
+    
+    # Debug logging
+    logging.info("Attempting login with user: %s", SETTINGS["user"])
+    logging.info("Site: %s, API path: %s", SITE_DOMAIN, API_PATH)
+    
     if not site.logged_in:
-        site.login(SETTINGS["user"], SETTINGS["bot_password"])
+        try:
+            site.login(SETTINGS["user"], SETTINGS["bot_password"])
+        except Exception as e:
+            logging.error("Login failed: %s", str(e))
+            raise
 
     cj.save(ignore_discard=True, ignore_expires=True)
     logging.info("Logged in as %s", SETTINGS["user"])
