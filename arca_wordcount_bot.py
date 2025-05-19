@@ -2,9 +2,9 @@
 """
 arca_wordcount_bot.py – revision 5
 ===================================
-A MediaWiki bot that counts rendered words in each “Statement by …” on
+A MediaWiki bot that counts rendered words in each "Statement by ..." on
 [[Wikipedia:Arbitration/Requests/Clarification and Amendment]] (ARCA) and
-publishes one wikitable per request to the bot’s userspace.
+publishes one wikitable per request to the bot's userspace.
 
 Configuration lives in **settings.json** (see sample below). Most runtime
 constants can now be overridden there instead of editing code.
@@ -24,7 +24,7 @@ constants can now be overridden there instead of editing code.
   "target_page": "User:KevinClerkBot/ARCA word counts",
   "default_limit": 500,
   "run_interval": 600,          /* seconds between updates */
-  "over_factor": 1.10,          /* >10 % above limit → over */
+  "over_factor": 1.10,          /* >10 % above limit → over */
   "red_hex": "#ffcccc",        /* highlight colour */
   "placeholder_heading": "statement by {other-editor}"
 }
@@ -39,6 +39,7 @@ import time
 from difflib import SequenceMatcher
 from http.cookiejar import MozillaCookieJar
 from typing import List, Tuple
+import argparse
 
 import mwclient
 import mwparserfromhell as parser
@@ -237,8 +238,17 @@ def run_once(site: mwclient.Site):
         logging.info("No changes – up to date.")
 
 
-def main():
+def main(loop: bool = True):
     site = connect()
+    # single-run mode?
+    if not loop:
+        try:
+            run_once(site)
+        except Exception:
+            logging.exception("Exception during single run")
+        return
+
+    # continuous mode
     while True:
         try:
             run_once(site)
@@ -248,4 +258,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    p = argparse.ArgumentParser(
+        description="ARCA word-count bot; runs forever by default."
+    )
+    p.add_argument(
+        "-1", "--once",
+        action="store_true",
+        help="run exactly one update and exit"
+    )
+    args = p.parse_args()
+    main(loop=not args.once)
