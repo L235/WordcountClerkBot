@@ -496,15 +496,16 @@ def assemble_data_template(site: mwclient.Site) -> str:
         parser.board_page = page  # type: ignore
         raw = fetch_page(site, page)
         for tbl in parser.parse(raw):
-            data.setdefault(label, {}).setdefault(tbl.anchor, {})
+            # Use the title instead of anchor for the key to preserve spaces
+            data.setdefault(label, {}).setdefault(tbl.title, {})
             for stmt in tbl.statements:
-                data[label][tbl.anchor][stmt.user] = stmt
+                data[label][tbl.title][stmt.user] = stmt
 
     # Now build the wikitext:
     parts: list[str] = []
     parts.append('{{#switch: {{{page}}}')  # outer switch on page
     for label, requests in data.items():
-        parts.append(' | ' + label + ' = {{#switch: {{{request}}}}}')  # inner switch on request
+        parts.append(' | ' + label + ' = {{#switch: {{{section}}}}}')  # inner switch on section
         for req, users in requests.items():
             parts.append('     | ' + req + ' = {{#switch: {{{user}}}}}')  # inner switch on user
             for user, stmt in users.items():
@@ -515,7 +516,7 @@ def assemble_data_template(site: mwclient.Site) -> str:
                 parts.append(f'             | status      = {stmt.status.value}')
                 parts.append('           }}')  # close type switch
             parts.append('       }}')  # close user switch
-        parts.append('   }}')  # close request switch
+        parts.append('   }}')  # close section switch
     parts.append('}}')  # close page switch
 
     return "\n".join(parts)
