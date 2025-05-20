@@ -25,12 +25,12 @@ High‑level flow
    * Parse the page wikitext into high‑level "requests" and their word‑limited
      statements.
    * Count the rendered words per statement, compare against the configured
-     limit and categorise the status (OK / within 10 % / over).
+     limit and categorise the status (OK / within 10 % / over).
    * Assemble one sortable wikitable per request.
 4. **Publish** – write the combined report to `User:…/word counts` if – and only
    if – the output has changed since the last run (to avoid useless page
    revisions).
-5. **Loop** – optionally sleep † and repeat every `run_interval` seconds.
+5. **Loop** – optionally sleep † and repeat every `run_interval` seconds.
 
 † When `--once` is supplied the bot runs a single cycle then exits.
 """
@@ -96,6 +96,7 @@ DEFAULT_CFG = {
     # Presentation ------------------------------------------------------------
     "red_hex": "#ffcccc",
     "amber_hex": "#ffffcc",
+    "header_text": "",
 
     # Miscellaneous -----------------------------------------------------------
     "placeholder_heading": "statement by {other-editor}",
@@ -405,6 +406,7 @@ def get_board_parsers() -> Dict[str, Tuple[str, Type[BaseParser]]]:
 
 def build_report(site: mwclient.Site) -> str:
     blocks: List[str] = []
+    blocks.append(CFG["header_text"])
     for label, (page, ParserCls) in get_board_parsers().items():
         raw = site.pages[page].text()
         parser = ParserCls(site)

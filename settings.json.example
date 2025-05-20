@@ -11,5 +11,6 @@
   "run_interval": 600,
   "over_factor": 1.10,
   "red_hex": "#ffcccc",
-  "placeholder_heading": "statement by {other-editor}"
+  "placeholder_heading": "statement by {other-editor}",
+  "header_text": ""
 } 

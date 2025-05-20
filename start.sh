@@ -26,7 +26,8 @@ cat > settings.json << EOF
   "run_interval": ${RUN_INTERVAL:-600},
   "over_factor": ${OVER_FACTOR:-1.10},
   "red_hex": "${RED_HEX:-#ffcccc}",
-  "placeholder_heading": "${PLACEHOLDER_HEADING:-statement by {other-editor}}"
+  "placeholder_heading": "${PLACEHOLDER_HEADING:-statement by {other-editor}}",
+  "header_text": "${HEADER_TEXT:-}"
 }
 EOF
 
