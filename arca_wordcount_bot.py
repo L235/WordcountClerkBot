@@ -505,11 +505,11 @@ def assemble_data_template(site: mwclient.Site) -> str:
     parts: list[str] = []
     parts.append('{{#switch: {{{page}}}')  # outer switch on page
     for label, requests in data.items():
-        parts.append(' | ' + label + ' = {{#switch: {{{section}}}}}')  # inner switch on section
+        parts.append(' | ' + label + ' = {{#switch: {{{section}}}')  # inner switch on section
         for req, users in requests.items():
-            parts.append('     | ' + req + ' = {{#switch: {{{user}}}}}')  # inner switch on user
+            parts.append('     | ' + req + ' = {{#switch: {{{user}}}')  # inner switch on user
             for user, stmt in users.items():
-                parts.append('         | ' + user + ' = {{#switch: {{{type}}}}}')  # inner switch on type
+                parts.append('         | ' + user + ' = {{#switch: {{{type}}}')  # inner switch on type
                 parts.append(f'             | words       = {stmt.visible}')
                 parts.append(f'             | uncollapsed = {stmt.expanded}')
                 parts.append(f'             | limit       = {stmt.limit}')
