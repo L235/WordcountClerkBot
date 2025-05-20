@@ -110,7 +110,7 @@ LOG.addHandler(h_err)
 WORD_RE = re.compile(r"\b\w+(?:['-]\w+)*\b")
 HEADING_RE = re.compile(r"^(={2,6})\s*(.*?)\s*\1\s*$", re.M)
 AWL_RE = re.compile(r"\{\{\s*ApprovedWordLimit[^}]*?\bwords\s*=\s*(\d+)", re.I | re.S)
-TEMPLATE_RE = re.compile(r"\{\{\s*ApprovedWordLimit[^}]*}}", re.I | re.S)
+TEMPLATE_RE = re.compile(r"\{\{\s*(?:ApprovedWordLimit|ACWordStatus)[^}]*}}", re.I | re.S)
 PAREN_RE = re.compile(r"^(.*?)(\s*\([^()]+\)\s*)$")
 HAT_OPEN_RE = re.compile(r"\{\{\s*hat", re.I)
 HAT_CLOSE_RE = re.compile(r"\{\{\s*hab\s*}}", re.I)
@@ -340,9 +340,9 @@ class BaseParser:
         self, raw_user: str, body: str, anchor: str, limit: int | None = None
     ) -> Statement:
         limit_val = self._extract_limit(body, limit)
-        body_no_awl = TEMPLATE_RE.sub("", body)
-        visible = visible_word_count(self.site, body_no_awl)
-        expanded = rendered_word_count(self.site, body_no_awl)
+        body_no_templates = TEMPLATE_RE.sub("", body)
+        visible = visible_word_count(self.site, body_no_templates)
+        expanded = rendered_word_count(self.site, body_no_templates)
         return Statement(
             fuzzy_username(raw_user, body),
             anchor,
