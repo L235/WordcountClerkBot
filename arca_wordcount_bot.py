@@ -58,6 +58,7 @@ DEFAULT_CFG = {
     "ae_page": "Wikipedia:Arbitration/Requests/Enforcement",
     "arc_page": "Wikipedia:Arbitration/Requests/Case",
     "target_page": "User:WordcountClerkBot/word counts",
+    "data_page": "User:WordcountClerkBot/word counts/data",
     "default_limit": 500,
     "over_factor": 1.10,
     "run_interval": 600,
@@ -484,6 +485,41 @@ def assemble_report(site: mwclient.Site) -> str:
             blocks.append(f"== {label} ==\n{body}")
     return "\n\n".join(blocks)
 
+def assemble_data_template(site: mwclient.Site) -> str:
+    """
+    Build a nested #switch template containing full data for each statement.
+    """
+    # First, gather everything into a nested dict:
+    data: dict[str, dict[str, dict[str, Statement]]] = {}
+    for label, (page, ParserCls) in get_board_parsers().items():
+        parser = ParserCls(site)
+        parser.board_page = page  # type: ignore
+        raw = fetch_page(site, page)
+        for tbl in parser.parse(raw):
+            data.setdefault(label, {}).setdefault(tbl.anchor, {})
+            for stmt in tbl.statements:
+                data[label][tbl.anchor][stmt.user] = stmt
+
+    # Now build the wikitext:
+    parts: list[str] = []
+    parts.append('{{#switch: {{{page}}}')  # outer switch on page
+    for label, requests in data.items():
+        parts.append(' | ' + label + ' = {{#switch: {{{request}}}}}')  # inner switch on request
+        for req, users in requests.items():
+            parts.append('     | ' + req + ' = {{#switch: {{{user}}}}}')  # inner switch on user
+            for user, stmt in users.items():
+                parts.append('         | ' + user + ' = {{#switch: {{{type}}}}}')  # inner switch on type
+                parts.append(f'             | words       = {stmt.visible}')
+                parts.append(f'             | uncollapsed = {stmt.expanded}')
+                parts.append(f'             | limit       = {stmt.limit}')
+                parts.append(f'             | status      = {stmt.status.value}')
+                parts.append('           }}')  # close type switch
+            parts.append('       }}')  # close user switch
+        parts.append('   }}')  # close request switch
+    parts.append('}}')  # close page switch
+
+    return "\n".join(parts)
+
 def run_once(site: mwclient.Site) -> None:
     """
     Build report, compare to target page, and save if changed.
@@ -512,6 +548,17 @@ def run_once(site: mwclient.Site) -> None:
         )
         target.save(new_text, summary=summary, minor=False, bot=False)
         LOG.info("Updated target page.")
+
+        # now update the data‐template page
+        data_title = str(CFG["data_page"])
+        data_page = site.pages[data_title]
+        new_data = assemble_data_template(site)
+        if new_data != data_page.text():
+            data_page.save(new_data,
+                           summary="Updating data template",
+                           minor=True,
+                           bot=False)
+            LOG.info("Updated data template page.")
     else:
         LOG.info("No changes detected.")
 
