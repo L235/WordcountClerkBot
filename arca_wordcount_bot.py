@@ -3,7 +3,7 @@
 WordcountClerkBot
 ========================================
 
-**Version 2.4 – accurate “visible” counts**
+**Version 2.4 – accurate "visible" counts**
 
 The bot now mirrors the front‑end word‑counter even more closely:
 
@@ -129,7 +129,7 @@ class RequestTable:
 
     HEADER: ClassVar[str] = (
         "{| class=\"wikitable sortable\"\n"
-        "! User !! Section !! Visible&nbsp;words !! Expanded&nbsp;words !! Limit !! Status\n"
+        "! User !! Section !! Words !! Uncollapsed&nbsp;words !! Limit !! Status\n"
     )
 
     def to_wikitext(self, board_page: str) -> str:
@@ -201,23 +201,23 @@ def visible_word_count(site: mwclient.Site, wikitext: str) -> int:
         html = _api_render(site, wikitext)
         soup = BeautifulSoup(html, "html.parser")
 
-        # 1 – elements hidden via inline style
+        # 1 – elements hidden via inline style
         for tag in soup.select('[style*="display:none" i]'):
             tag.decompose()
 
-        # 2 – collapsed content
+        # 2 – collapsed content
         for tag in soup.select('.mw-collapsed, .mw-collapsible-content'):
             tag.decompose()
 
-        # 3 – struck‑through content
+        # 3 – struck‑through content
         for tag in soup.select('[style*="text-decoration:line-through" i], s, strike, del'):
             tag.decompose()
 
-        # 4 – page furniture
+        # 4 – page furniture
         for tag in soup.select('div#siteSub, div#contentSub, div#jump-to-nav'):
             tag.decompose()
 
-        # 5 – plain text & cleanup
+        # 5 – plain text & cleanup
         text = _TS_RE.sub("", soup.get_text())
         tokens = [
             t for t in re.split(r"\s+", text)
@@ -434,8 +434,8 @@ def build_report(site: mwclient.Site) -> str:
         tables = parser.parse(raw)
 
         if not tables:
-            if label == "ARC":
-                blocks.append("== ARC ==\n''No open requests.''")
+            # if this board has no open requests, show a placeholder for every label
+            blocks.append(f"== {label} ==\n''No open requests.''")
             continue
 
         body = "\n\n".join(t.to_wikitext(page) for t in tables)
@@ -469,7 +469,26 @@ def run_once(site: mwclient.Site) -> None:
     target = site.pages[str(CFG["target_page"])]
     new_text = build_report(site)
     if new_text != target.text():
-        target.save(new_text, summary="Wordcount update – bot", minor=False, bot=False)
+        # recompute stats for the edit summary
+        all_tables: List[RequestTable] = []
+        for label, (page, Pcls) in get_board_parsers().items():
+            raw = site.pages[page].text()
+            parser = Pcls(site)
+            parser.board_page = page  # type: ignore[attr-defined]
+            all_tables.extend(parser.parse(raw))
+
+        all_statements = [s for tbl in all_tables for s in tbl.statements]
+        x = sum(1 for s in all_statements if s.status == "over")
+        y = sum(1 for s in all_statements if s.status == "within 10%")
+        z = len(all_statements)
+        a = len(all_tables)
+
+        summary = (
+            f"updating table ({x} statements over, {y} statements within 10%, "
+            f"{z} total statements, {a} total pending requests) "
+            f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"
+        )
+        target.save(new_text, summary=summary, minor=False, bot=False)
         LOGGER.info("Updated target page.")
     else:
         LOGGER.info("No changes detected.")
