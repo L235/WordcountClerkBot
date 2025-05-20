@@ -113,7 +113,6 @@ AWL_RE = re.compile(r"\{\{\s*ApprovedWordLimit[^}]*?\bwords\s*=\s*(\d+)", re.I |
 TEMPLATE_RE = re.compile(r"\{\{\s*(?:ApprovedWordLimit|ACWordStatus)[^}]*}}", re.I | re.S)
 PAREN_RE = re.compile(r"^(.*?)(\s*\([^()]+\)\s*)$")
 HAT_OPEN_RE = re.compile(r"\{\{\s*hat", re.I)
-HAT_CLOSE_RE = re.compile(r"\{\{\s*hab\s*}}", re.I)
 _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
 
 def slugify(s: str) -> str:
@@ -363,9 +362,7 @@ class SimpleBoardParser(BaseParser):
             sec_title = mwpfh.parse(lvl2.filter_headings()[0].title).strip_code().strip()
             anchor = slugify(sec_title)
             sec_wikitext = str(lvl2)
-            closed = bool(
-                HAT_OPEN_RE.match(sec_wikitext.lstrip()) and HAT_CLOSE_RE.search(sec_wikitext)
-            )
+            closed = bool(HAT_OPEN_RE.match(sec_wikitext.lstrip()))
 
             statements: List[Statement] = []
             for st in lvl2.get_sections(levels=[3]):
@@ -403,10 +400,8 @@ class AEParser(BaseParser):
                 # grab everything from just after this header to just before the next lvl-2
                 body_full = text[sec.start:next2_start]
 
-                closed = bool(
-                    HAT_OPEN_RE.match(body_full.lstrip()) and
-                    re.search(r"\{\{\s*hab\s*}}\s*\Z", body_full, re.I)
-                )
+                closed = bool(HAT_OPEN_RE.match(body_full.lstrip()))
+
                 current = RequestTable(sec.title, slugify(sec.title), [], closed)
                 tables.append(current)
                 continue
@@ -423,7 +418,7 @@ class AEParser(BaseParser):
                     self._make_statement(raw_user, body, slugify(sec.title))
                 )
 
-            # special “Request concerning” blocks at level-3
+            # special "Request concerning" blocks at level-3
             elif sec.level == 3 and sec.title.lower().startswith("request concerning"):
                 body = self._collect_request_body(sec, text)
                 if body:
@@ -555,15 +550,17 @@ def run_once(site: mwclient.Site) -> None:
             parser.board_page = page  # type: ignore
             all_tables.extend(parser.parse(raw))
 
-        all_statements = [s for tbl in all_tables for s in tbl.statements]
+        # Only count open requests and their statements
+        open_tables = [tbl for tbl in all_tables if not tbl.closed]
+        all_statements = [s for tbl in open_tables for s in tbl.statements]
         x = sum(1 for s in all_statements if s.status == Status.OVER)
         y = sum(1 for s in all_statements if s.status == Status.WITHIN)
         z = len(all_statements)
-        a = len(all_tables)
+        a = len(open_tables)
 
         summary = (
             f"updating table ({x} statements over, {y} statements within 10%, "
-            f"{z} total statements, {a} total pending requests) "
+            f"{z} total statements, {a} pending requests) "
             f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"
         )
         target.save(new_text, summary=summary, minor=False, bot=False)
@@ -575,7 +572,8 @@ def run_once(site: mwclient.Site) -> None:
         new_data = assemble_data_template(site)
         if new_data != data_page.text():
             data_page.save(new_data,
-                           summary="Updating data template",
+                           summary= (f"Updating data template ({a} open requests, {z} statements)"
+                                     f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
                            minor=True,
                            bot=False)
             LOG.info("Updated data template page.")
