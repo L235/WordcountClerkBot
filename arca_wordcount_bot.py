@@ -391,28 +391,47 @@ class AEParser(BaseParser):
         sections = scan_sections(text)
         tables: List[RequestTable] = []
         current: RequestTable | None = None
-        for sec in sections:
+
+        for i, sec in enumerate(sections):
+            # When we hit a level-2 header, start a new RequestTable
             if sec.level == 2:
+                # find the start of the *next* level-2 section (or EOF)
+                next2_start = next(
+                    (s.start for s in sections[i+1:] if s.level == 2),
+                    len(text)
+                )
+                # grab everything from just after this header to just before the next lvl-2
+                body_full = text[sec.start:next2_start]
+
                 closed = bool(
-                    HAT_OPEN_RE.match(sec.body(text).lstrip()) and HAT_CLOSE_RE.search(sec.body(text))
+                    HAT_OPEN_RE.match(body_full.lstrip()) and
+                    HAT_CLOSE_RE.search(body_full)
                 )
                 current = RequestTable(sec.title, slugify(sec.title), [], closed)
                 tables.append(current)
                 continue
+
+            # everything below here belongs to the most recent level-2
             if current is None:
                 continue
 
+            # collect statements in level-3 and level-4 subsections
             if sec.level in {3, 4} and self._STMT.match(sec.title):
                 body = sec.body(text)
                 raw_user = self._STMT.sub("", sec.title)
-                current.statements.append(self._make_statement(raw_user, body, slugify(sec.title)))
+                current.statements.append(
+                    self._make_statement(raw_user, body, slugify(sec.title))
+                )
+
+            # special “Request concerning” blocks at level-3
             elif sec.level == 3 and sec.title.lower().startswith("request concerning"):
                 body = self._collect_request_body(sec, text)
                 if body:
                     user = self._requesting_user(sec, text)
                     current.statements.append(
-                        self._make_statement(user, body, slugify(f"{sec.title}"))
+                        self._make_statement(user, body, slugify(sec.title))
                     )
+
         return tables
 
     def _requesting_user(self, sec: RawSection, full: str) -> str:
