@@ -32,6 +32,7 @@ from difflib import SequenceMatcher
 from enum import Enum
 from functools import lru_cache
 from typing import ClassVar, List, Dict, Tuple, Type
+from datetime import datetime, timezone
 
 # ---------------------------------------------------------------------------
 # Third‑party dependencies
@@ -539,7 +540,38 @@ def run_once(site: mwclient.Site) -> None:
     """
     Build report, compare to target page, and save if changed.
     """
-    target = site.pages[str(CFG["target_page"])]
+    # ---- early-exit check ----
+    target_title = str(CFG["target_page"])
+    target = site.pages[target_title]
+    # get the latest revision of the target page
+    revs = target.revisions(dir="newer", api_chunk_size=1)
+    try:
+        ts_target = _parse_ts(next(revs)["timestamp"])
+    except StopIteration:
+        # target has no revisions (brand new?), proceed with full run
+        ts_target = datetime.min.replace(tzinfo=timezone.utc)
+
+    # fetch the last edit time of each source page
+    source_titles = [
+        str(CFG["ae_page"]),
+        str(CFG["arc_page"]),
+        str(CFG["arca_page"]),
+    ]
+    ts_sources = []
+    for title in source_titles:
+        rev_iter = site.pages[title].revisions(dir="newer", api_chunk_size=1)
+        try:
+            ts_sources.append(_parse_ts(next(rev_iter)["timestamp"]))
+        except StopIteration:
+            # missing page or no revs → force a refresh
+            ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
+
+    # if our report is newer than *all* source pages, nothing to do
+    if ts_target > max(ts_sources):
+        LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
+        return
+    # ---- end early-exit check ----
+
     new_text = assemble_report(site)
     if new_text != target.text():
         # recompute stats for the edit summary
@@ -599,6 +631,22 @@ def main(loop: bool, debug: bool) -> None:
                 LOG.exception("Error; sleeping before retry")
             time.sleep(interval)
 
+def _parse_ts(ts) -> datetime:
+    """
+    Parse a timestamp from mwclient.revisions():
+    - if it's a struct_time, pull the tm_* fields
+    - if it's an ISO string ("YYYY-MM-DDTHH:MM:SSZ"), parse it
+    """
+    if isinstance(ts, time.struct_time):
+        # struct_time is already in UTC
+        return datetime(
+            ts.tm_year, ts.tm_mon, ts.tm_mday,
+            ts.tm_hour, ts.tm_min, ts.tm_sec,
+            tzinfo=timezone.utc
+        )
+    # otherwise assume string like "2025-05-20T18:34:56Z"
+    return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
 ###############################################################################
 # CLI entry‑point                                                             #
 ###############################################################################
@@ -609,3 +657,4 @@ if __name__ == "__main__":
     ap.add_argument("--debug", action="store_true", help="verbose debug logging")
     args = ap.parse_args()
     main(loop=not args.once, debug=args.debug)
+
