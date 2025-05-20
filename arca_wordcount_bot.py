@@ -163,7 +163,7 @@ def fuzzy_username(header: str, body: str) -> str:
         r = SequenceMatcher(None, simple.lower(), c.lower()).ratio()
         if r > score:
             best, score = c, r
-    return best if score >= 0.6 else simple
+    return best if score >= 0.3 else simple
 
 ###############################################################################
 # Dataclasses                                                                 #
