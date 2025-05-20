@@ -405,7 +405,7 @@ class AEParser(BaseParser):
 
                 closed = bool(
                     HAT_OPEN_RE.match(body_full.lstrip()) and
-                    HAT_CLOSE_RE.search(body_full)
+                    re.search(r"\{\{\s*hab\s*}}\s*\Z", body_full, re.I)
                 )
                 current = RequestTable(sec.title, slugify(sec.title), [], closed)
                 tables.append(current)
