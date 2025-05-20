@@ -3,17 +3,17 @@
 WordcountClerkBot
 ========================================
 
-**Version 2.4 – accurate "visible" counts**
+A bot that monitors word counts in Wikipedia arbitration requests. It:
 
-The bot now mirrors the front‑end word‑counter even more closely:
+* Scans ARCA, AE, and ARC pages for word-limited statements
+* Counts both visible and expanded word counts for each statement
+* Compares counts against approved word limits
+* Generates a report page with color-coded status indicators
+* Updates automatically on a configurable interval
 
-* **Expanded words** – unchanged.
-* **Visible words** – now computed with real HTML parsing (BeautifulSoup) so
-  that content hidden by `mw-collapsible mw-collapsed`, `<span
-  style="display:none">`, struck‑through text, etc., is excluded exactly as the
-  on‑wiki JavaScript does.
-
-Only the *visible* figure is compared with the word‑limit policy.
+The bot uses HTML parsing to match the front-end word counter exactly,
+excluding hidden content, collapsed sections, and struck-through text.
+Only the visible word count is compared against the word limit policy.
 """
 from __future__ import annotations
 
@@ -25,9 +25,12 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from enum import Enum
+from functools import lru_cache
 from typing import ClassVar, List, Dict, Tuple, Type
 
 # ---------------------------------------------------------------------------
@@ -70,12 +73,34 @@ CFG: Dict[str, object] = DEFAULT_CFG.copy()
 # Logging                                                                     #
 ###############################################################################
 
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s %(message)s",
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    handlers=[logging.StreamHandler()],
-)
-LOGGER = logging.getLogger(__name__)
+# ─── 1) CUSTOM LOGGING SETUP (INFO→stdout, WARNING+→stderr) ───────────────────
+class MaxLevelFilter(logging.Filter):
+    """Allow through only records <= a given level."""
+    def __init__(self, level: int):
+        super().__init__()
+        self.max_level = level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno <= self.max_level
+
+LOG = logging.getLogger(__name__)
+LOG.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+
+# Handler for INFO and DEBUG → stdout
+h_info = logging.StreamHandler(sys.stdout)
+h_info.setLevel(logging.DEBUG)
+h_info.addFilter(MaxLevelFilter(logging.INFO))
+
+# Handler for WARNING and above → stderr
+h_err = logging.StreamHandler(sys.stderr)
+h_err.setLevel(logging.WARNING)
+
+fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+h_info.setFormatter(fmt)
+h_err.setFormatter(fmt)
+
+LOG.addHandler(h_info)
+LOG.addHandler(h_err)
 
 ###############################################################################
 # Regex helpers & constants                                                   #
@@ -90,11 +115,65 @@ HAT_OPEN_RE = re.compile(r"\{\{\s*hat", re.I)
 HAT_CLOSE_RE = re.compile(r"\{\{\s*hab\s*}}", re.I)
 _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
 
-slugify = lambda s: re.sub(r"\s+", "_", mwpfh.parse(s).strip_code()).strip("_")
+def slugify(s: str) -> str:
+    """Convert a heading into a MediaWiki anchor (no spaces, punctuation stripped)."""
+    text = mwpfh.parse(s).strip_code()
+    return re.sub(r"\s+", "_", text).strip("_")
+
+def strip_parenthetical(username: str, body: str) -> str:
+    """Remove parenthetical content from username if not referenced in body."""
+    m = PAREN_RE.match(username)
+    if not m:
+        return username
+    base = m.group(1).rstrip()
+    if re.search(rf"\[\[\s*(?:User(?: talk)?)\s*:\s*{re.escape(username)}\b", body, flags=re.I):
+        return username
+    return base
+
+def user_links(body: str) -> List[str]:
+    """Extract usernames from User: and User talk: links in wikitext."""
+    links: List[str] = []
+    for wl in mwpfh.parse(body).filter_wikilinks():
+        title = str(wl.title)
+        ns, _, rest = title.partition(":")
+        if ns.lower() in {"user", "user talk"} and rest:
+            links.append(rest.split("/")[0].strip())
+    return links
+
+def fuzzy_username(header: str, body: str) -> str:
+    """
+    Find best matching username from header and body links.
+    
+    Args:
+        header: Raw username from section header
+        body: Full wikitext of the section
+        
+    Returns:
+        Best matching username, preferring exact matches from links
+    """
+    simple = strip_parenthetical(header, body)
+    cands = user_links(body)
+    if not cands:
+        return simple
+    for c in cands:
+        if c.lower() == simple.lower():
+            return c
+    best, score = simple, 0.0
+    for c in cands:
+        r = SequenceMatcher(None, simple.lower(), c.lower()).ratio()
+        if r > score:
+            best, score = c, r
+    return best if score >= 0.6 else simple
 
 ###############################################################################
 # Dataclasses                                                                 #
 ###############################################################################
+
+class Status(Enum):
+    """Possible states for a statement's word count."""
+    OK = "ok"
+    WITHIN = "within 10%"
+    OVER = "over"
 
 @dataclass
 class Statement:
@@ -105,19 +184,20 @@ class Statement:
     limit: int
 
     @property
-    def status(self) -> str:
+    def status(self) -> Status:
         if self.visible <= self.limit:
-            return "ok"
-        elif self.visible <= self.limit * float(CFG["over_factor"]):
-            return "within 10%"
-        return "over"
+            return Status.OK
+        if self.visible <= self.limit * float(CFG["over_factor"]):
+            return Status.WITHIN
+        return Status.OVER
 
     @property
     def colour(self) -> str | None:
-        return {
-            "within 10%": str(CFG["amber_hex"]),
-            "over": str(CFG["red_hex"]),
-        }.get(self.status)
+        mapping = {
+            Status.WITHIN: str(CFG["amber_hex"]),
+            Status.OVER: str(CFG["red_hex"]),
+        }
+        return mapping.get(self.status)
 
 
 @dataclass
@@ -150,7 +230,7 @@ class RequestTable:
                 f"|-{style}\n"
                 f"| [[User:{s.user}|{s.user}]] "
                 f"|| [[{board_page}#{s.anchor}|link]] "
-                f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status}"
+                f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value}"
             )
         return heading_line + "\n" + self.HEADER + "\n".join(rows) + "\n|}"
 
@@ -158,30 +238,18 @@ class RequestTable:
 # Word‑count helpers                                                          #
 ###############################################################################
 
-_RENDER_CACHE: Dict[str, int] = {}
-_VISIBLE_CACHE: Dict[str, int] = {}
-
-def _api_render(site: mwclient.Site, wikitext: str) -> str:
+@lru_cache(maxsize=1024)
+def _api_render(site_url: str, api_path: str, wikitext: str) -> str:
+    """Call parse API once per unique wikitext."""
+    site = connect()  # we could optimize by caching site too
     return site.api(
-        "parse",
-        text=wikitext,
-        prop="text",
-        contentmodel="wikitext",
+        "parse", text=wikitext, prop="text", contentmodel="wikitext"
     )["parse"]["text"]["*"]
 
-
 def rendered_word_count(site: mwclient.Site, wikitext: str) -> int:
-    if wikitext in _RENDER_CACHE:
-        return _RENDER_CACHE[wikitext]
-    try:
-        html = _api_render(site, wikitext)
-        words = len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
-    except Exception as exc:
-        LOGGER.warning("parse API failed: %s", exc)
-        words = 0
-    _RENDER_CACHE[wikitext] = words
-    return words
-
+    """Count words in rendered HTML, including hidden content."""
+    html = _api_render(str(CFG["site"]), str(CFG["path"]), wikitext)
+    return len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
 
 def visible_word_count(site: mwclient.Site, wikitext: str) -> int:
     """
@@ -194,81 +262,32 @@ def visible_word_count(site: mwclient.Site, wikitext: str) -> int:
     • delete UTC timestamps  
     • count tokens with at least one alphanumeric
     """
-    if wikitext in _VISIBLE_CACHE:
-        return _VISIBLE_CACHE[wikitext]
+    html = _api_render(str(CFG["site"]), str(CFG["path"]), wikitext)
+    soup = BeautifulSoup(html, "html.parser")
 
-    try:
-        html = _api_render(site, wikitext)
-        soup = BeautifulSoup(html, "html.parser")
+    # 1 – elements hidden via inline style
+    for tag in soup.select('[style*="display:none" i]'):
+        tag.decompose()
 
-        # 1 – elements hidden via inline style
-        for tag in soup.select('[style*="display:none" i]'):
-            tag.decompose()
+    # 2 – collapsed content
+    for tag in soup.select('.mw-collapsed, .mw-collapsible-content'):
+        tag.decompose()
 
-        # 2 – collapsed content
-        for tag in soup.select('.mw-collapsed, .mw-collapsible-content'):
-            tag.decompose()
+    # 3 – struck‑through content
+    for tag in soup.select('[style*="text-decoration:line-through" i], s, strike, del'):
+        tag.decompose()
 
-        # 3 – struck‑through content
-        for tag in soup.select('[style*="text-decoration:line-through" i], s, strike, del'):
-            tag.decompose()
+    # 4 – page furniture
+    for tag in soup.select('div#siteSub, div#contentSub, div#jump-to-nav'):
+        tag.decompose()
 
-        # 4 – page furniture
-        for tag in soup.select('div#siteSub, div#contentSub, div#jump-to-nav'):
-            tag.decompose()
-
-        # 5 – plain text & cleanup
-        text = _TS_RE.sub("", soup.get_text())
-        tokens = [
-            t for t in re.split(r"\s+", text)
-            if t and re.search(r"[A-Za-z0-9]", t)
-        ]
-        words = len(tokens)
-    except Exception as exc:
-        LOGGER.warning("visible parse API failed: %s", exc)
-        words = 0
-
-    _VISIBLE_CACHE[wikitext] = words
-    return words
-
-###############################################################################
-# Username heuristics                                                         #
-###############################################################################
-
-def strip_parenthetical(username: str, body: str) -> str:
-    m = PAREN_RE.match(username)
-    if not m:
-        return username
-    base = m.group(1).rstrip()
-    if re.search(rf"\[\[\s*(?:User(?: talk)?)\s*:\s*{re.escape(username)}\b", body, flags=re.I):
-        return username
-    return base
-
-
-def user_links(body: str) -> List[str]:
-    links: List[str] = []
-    for wl in mwpfh.parse(body).filter_wikilinks():
-        title = str(wl.title)
-        ns, _, rest = title.partition(":")
-        if ns.lower() in {"user", "user talk"} and rest:
-            links.append(rest.split("/")[0].strip())
-    return links
-
-
-def fuzzy_username(header: str, body: str) -> str:
-    simple = strip_parenthetical(header, body)
-    cands = user_links(body)
-    if not cands:
-        return simple
-    for c in cands:
-        if c.lower() == simple.lower():
-            return c
-    best, score = simple, 0.0
-    for c in cands:
-        r = SequenceMatcher(None, simple.lower(), c.lower()).ratio()
-        if r > score:
-            best, score = c, r
-    return best if score >= 0.6 else simple
+    # 5 – plain text & cleanup
+    text = _TS_RE.sub("", soup.get_text())
+    tokens = [
+        t for t in re.split(r"\s+", text)
+        if t and re.search(r"[A-Za-z0-9]", t)
+    ]
+    return len(tokens)
 
 ###############################################################################
 # Section scanner (for AE)                                                    #
@@ -313,7 +332,7 @@ class BaseParser:
             try:
                 return int(m.group(1))
             except ValueError:
-                LOGGER.debug("Invalid ApprovedWordLimit value: %s", m.group(1))
+                LOG.debug("Invalid ApprovedWordLimit value: %s", m.group(1))
         return default or int(CFG["default_limit"])
 
     def _make_statement(
@@ -421,38 +440,19 @@ def get_board_parsers() -> Dict[str, Tuple[str, Type[BaseParser]]]:
     }
 
 ###############################################################################
-# Report builder                                                             #
-###############################################################################
-
-def build_report(site: mwclient.Site) -> str:
-    blocks: List[str] = []
-    blocks.append(CFG["header_text"])
-    for label, (page, ParserCls) in get_board_parsers().items():
-        raw = site.pages[page].text()
-        parser = ParserCls(site)
-        parser.board_page = page  # type: ignore[attr-defined]
-        tables = parser.parse(raw)
-
-        if not tables:
-            # if this board has no open requests, show a placeholder for every label
-            blocks.append(f"== {label} ==\n''No open requests.''")
-            continue
-
-        body = "\n\n".join(t.to_wikitext(page) for t in tables)
-        blocks.append(f"== {label} ==\n{body}")
-    return "\n\n".join(blocks)
-
-###############################################################################
 # Runtime helpers                                                             #
 ###############################################################################
 
 def load_settings(path: str = SETTINGS_PATH) -> None:
+    """Load JSON settings into CFG (overrides defaults)."""
+    defaults = DEFAULT_CFG.copy()
+    CFG.update(defaults)
     if os.path.exists(path):
         with open(path) as f:
             CFG.update(json.load(f))
 
-
 def connect() -> mwclient.Site:
+    """Login to MediaWiki and return a Site object."""
     sess = requests.Session()
     site = mwclient.Site(
         str(CFG["site"]),
@@ -464,22 +464,44 @@ def connect() -> mwclient.Site:
         site.login(str(CFG["user"]), str(CFG["bot_password"]))
     return site
 
+def fetch_page(site: mwclient.Site, title: str) -> str:
+    """Fetch wikitext body of `title` from the wiki."""
+    return site.pages[title].text()
+
+def assemble_report(site: mwclient.Site) -> str:
+    """Build the entire report wikitext by fetching each board and parsing it."""
+    blocks: List[str] = [CFG["header_text"]]
+    for label, (page, ParserCls) in get_board_parsers().items():
+        raw = fetch_page(site, page)
+        parser = ParserCls(site)
+        parser.board_page = page  # type: ignore
+        tables = parser.parse(raw)
+
+        if not tables:
+            blocks.append(f"== {label} ==\n''No open requests.''")
+        else:
+            body = "\n\n".join(t.to_wikitext(page) for t in tables)
+            blocks.append(f"== {label} ==\n{body}")
+    return "\n\n".join(blocks)
 
 def run_once(site: mwclient.Site) -> None:
+    """
+    Build report, compare to target page, and save if changed.
+    """
     target = site.pages[str(CFG["target_page"])]
-    new_text = build_report(site)
+    new_text = assemble_report(site)
     if new_text != target.text():
         # recompute stats for the edit summary
         all_tables: List[RequestTable] = []
         for label, (page, Pcls) in get_board_parsers().items():
-            raw = site.pages[page].text()
+            raw = fetch_page(site, page)
             parser = Pcls(site)
-            parser.board_page = page  # type: ignore[attr-defined]
+            parser.board_page = page  # type: ignore
             all_tables.extend(parser.parse(raw))
 
         all_statements = [s for tbl in all_tables for s in tbl.statements]
-        x = sum(1 for s in all_statements if s.status == "over")
-        y = sum(1 for s in all_statements if s.status == "within 10%")
+        x = sum(1 for s in all_statements if s.status == Status.OVER)
+        y = sum(1 for s in all_statements if s.status == Status.WITHIN)
         z = len(all_statements)
         a = len(all_tables)
 
@@ -489,26 +511,28 @@ def run_once(site: mwclient.Site) -> None:
             f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"
         )
         target.save(new_text, summary=summary, minor=False, bot=False)
-        LOGGER.info("Updated target page.")
+        LOG.info("Updated target page.")
     else:
-        LOGGER.info("No changes detected.")
-
+        LOG.info("No changes detected.")
 
 def main(loop: bool, debug: bool) -> None:
+    """
+    Entry point: load settings, connect, and either run once or loop.
+    """
     if debug:
-        LOGGER.setLevel(logging.DEBUG)
+        LOG.setLevel(logging.DEBUG)
     load_settings()
     site = connect()
     if not loop:
         run_once(site)
-        return
-    interval = int(CFG["run_interval"])
-    while True:
-        try:
-            run_once(site)
-        except Exception:
-            LOGGER.exception("Error; sleeping before retry")
-        time.sleep(interval)
+    else:
+        interval = int(CFG["run_interval"])
+        while True:
+            try:
+                run_once(site)
+            except Exception:
+                LOG.exception("Error; sleeping before retry")
+            time.sleep(interval)
 
 ###############################################################################
 # CLI entry‑point                                                             #
