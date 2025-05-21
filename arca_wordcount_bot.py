@@ -544,7 +544,7 @@ def run_once(site: mwclient.Site) -> None:
     target_title = str(CFG["target_page"])
     target = site.pages[target_title]
     # get the latest revision of the target page
-    revs = target.revisions(dir="newer", api_chunk_size=1)
+    revs = target.revisions(dir="older", api_chunk_size=1)
     try:
         ts_target = _parse_ts(next(revs)["timestamp"])
     except StopIteration:
@@ -559,7 +559,7 @@ def run_once(site: mwclient.Site) -> None:
     ]
     ts_sources = []
     for title in source_titles:
-        rev_iter = site.pages[title].revisions(dir="newer", api_chunk_size=1)
+        rev_iter = site.pages[title].revisions(dir="older", api_chunk_size=1)
         try:
             ts_sources.append(_parse_ts(next(rev_iter)["timestamp"]))
         except StopIteration:
