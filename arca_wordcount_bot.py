@@ -240,30 +240,50 @@ class RequestTable:
 ###############################################################################
 
 @lru_cache(maxsize=1024)
-def _api_render(site_url: str, api_path: str, wikitext: str) -> str:
-    """Call parse API once per unique wikitext."""
-    site = connect()  # we could optimize by caching site too
-    return site.api(
+def _api_render_cached(site_url: str, api_path: str, wikitext: str) -> str:
+    """Cache the raw API response - site must be passed separately."""
+    # This function now only caches the API call, doesn't handle the site connection
+    pass  # Implementation moved to _api_render
+
+def _api_render(site: mwclient.Site, wikitext: str) -> str:
+    """Call parse API once per unique wikitext using provided site."""
+    # Create a cache key that doesn't include the site object
+    cache_key = (str(site.host), str(site.path), wikitext)
+    
+    # Try to get from a simple in-memory cache first
+    if not hasattr(_api_render, '_cache'):
+        _api_render._cache = {}
+    
+    if cache_key in _api_render._cache:
+        return _api_render._cache[cache_key]
+    
+    # Make the API call with the provided site
+    result = site.api(
         "parse", text=wikitext, prop="text", contentmodel="wikitext"
     )["parse"]["text"]["*"]
+    
+    # Cache the result
+    _api_render._cache[cache_key] = result
+    
+    # Limit cache size to prevent memory issues
+    if len(_api_render._cache) > 1000:
+        # Remove oldest entries (simple FIFO)
+        keys_to_remove = list(_api_render._cache.keys())[:100]
+        for key in keys_to_remove:
+            del _api_render._cache[key]
+    
+    return result
 
 def rendered_word_count(site: mwclient.Site, wikitext: str) -> int:
     """Count words in rendered HTML, including hidden content."""
-    html = _api_render(str(CFG["site"]), str(CFG["path"]), wikitext)
+    html = _api_render(site, wikitext)  # Pass site instead of reconnecting
     return len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
 
 def visible_word_count(site: mwclient.Site, wikitext: str) -> int:
     """
-    Replicates front‑end wordcount.js:
-
-    • remove display:none elements  
-    • drop collapsible‑but‑collapsed (`mw-collapsed`, `mw-collapsible-content`)  
-    • remove struck‑through text  
-    • strip page furniture  
-    • delete UTC timestamps  
-    • count tokens with at least one alphanumeric
+    Replicates front‑end wordcount.js - now uses passed site object.
     """
-    html = _api_render(str(CFG["site"]), str(CFG["path"]), wikitext)
+    html = _api_render(site, wikitext)  # Pass site instead of reconnecting
     soup = BeautifulSoup(html, "html.parser")
 
     # 1 – elements hidden via inline style
