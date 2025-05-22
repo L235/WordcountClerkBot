@@ -13,5 +13,7 @@
   "over_factor": 1.10,
   "red_hex": "#ffcccc",
   "placeholder_heading": "statement by {other-editor}",
-  "header_text": ""
+  "header_text": "",
+  "session_file": "~/wordcountclerkbot/cookies/session.pkl",
+  "session_max_age": 86400
 } 

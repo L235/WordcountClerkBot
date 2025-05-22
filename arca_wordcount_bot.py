@@ -33,6 +33,7 @@ from enum import Enum
 from functools import lru_cache
 from typing import ClassVar, List, Dict, Tuple, Type
 from datetime import datetime, timezone
+import pickle
 
 # ---------------------------------------------------------------------------
 # Third‑party dependencies
@@ -67,6 +68,8 @@ DEFAULT_CFG = {
     "amber_hex": "#ffffcc",
     "header_text": "",
     "placeholder_heading": "statement by {other-editor}",
+    "session_file": "~/wordcountclerkbot/cookies/session.pkl",
+    "session_max_age": 86400,  # 24 hours in seconds
 }
 
 CFG: Dict[str, object] = DEFAULT_CFG.copy()
@@ -487,8 +490,58 @@ def load_settings(path: str = SETTINGS_PATH) -> None:
         with open(path) as f:
             CFG.update(json.load(f))
 
+def save_session(site: mwclient.Site, session_file: str) -> None:
+    """Save the authenticated session to disk."""
+    try:
+        session_data = {
+            'cookies': site.connection.cookies,
+            'logged_in': site.logged_in,
+            'timestamp': time.time()
+        }
+        os.makedirs(os.path.dirname(session_file), exist_ok=True)
+        with open(session_file, 'wb') as f:
+            pickle.dump(session_data, f)
+        LOG.debug("Session saved to %s", session_file)
+    except Exception as e:
+        LOG.warning("Failed to save session: %s", e)
+
+def load_session(site: mwclient.Site, session_file: str) -> bool:
+    """Load and restore an authenticated session from disk."""
+    try:
+        if not os.path.exists(session_file):
+            return False
+            
+        with open(session_file, 'rb') as f:
+            session_data = pickle.load(f)
+        
+        # Check if session is too old
+        max_age = int(CFG["session_max_age"])
+        if time.time() - session_data.get('timestamp', 0) > max_age:
+            LOG.debug("Session expired, removing file")
+            os.remove(session_file)
+            return False
+        
+        # Restore session
+        site.connection.cookies.update(session_data['cookies'])
+        site._logged_in = session_data['logged_in']
+        
+        # Verify the session still works
+        try:
+            # Try a simple API call that requires authentication
+            site.api('query', meta='userinfo')
+            LOG.debug("Session successfully restored")
+            return True
+        except Exception:
+            LOG.debug("Session invalid, removing file")
+            os.remove(session_file)
+            return False
+            
+    except Exception as e:
+        LOG.warning("Failed to load session: %s", e)
+        return False
+
 def connect() -> mwclient.Site:
-    """Login to MediaWiki and return a Site object."""
+    """Login to MediaWiki and return a Site object with session persistence."""
     sess = requests.Session()
     site = mwclient.Site(
         str(CFG["site"]),
@@ -496,8 +549,20 @@ def connect() -> mwclient.Site:
         clients_useragent=str(CFG["ua"]),
         pool=sess,
     )
+    
+    session_file = str(CFG["session_file"])
+    
+    # Try to restore existing session first
+    if load_session(site, session_file):
+        LOG.info("Reusing existing session")
+        return site
+    
+    # If no valid session, login fresh
     if not site.logged_in:
+        LOG.info("Logging in fresh")
         site.login(str(CFG["user"]), str(CFG["bot_password"]))
+        save_session(site, session_file)
+    
     return site
 
 def fetch_page(site: mwclient.Site, title: str) -> str:
