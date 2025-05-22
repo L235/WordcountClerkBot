@@ -7,11 +7,5 @@
   "deploy": {
     "restartPolicyType": "NEVER",
     "cronSchedule": "*/5 * * * *"
-  },
-  "volumes": [
-    {
-      "name": "bot-data",
-      "mountPath": "/data"
-    }
-  ]
+  }
 } 
