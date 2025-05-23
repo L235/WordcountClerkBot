@@ -34,6 +34,7 @@ from functools import lru_cache
 from typing import ClassVar, List, Dict, Tuple, Type
 from datetime import datetime, timezone
 import pickle
+import http.cookiejar
 
 # ---------------------------------------------------------------------------
 # Third‑party dependencies
@@ -55,7 +56,6 @@ DEFAULT_CFG = {
     "user": "BotUser@PasswordName",
     "bot_password": "",
     "ua": "WordcountClerkBot/2.4 (https://github.com/L235/WordcountClerkBot)",
-    "cookie_path": "~/wordcountclerkbot/cookies.txt",
     "arca_page": "Wikipedia:Arbitration/Requests/Clarification and Amendment",
     "ae_page": "Wikipedia:Arbitration/Requests/Enforcement",
     "arc_page": "Wikipedia:Arbitration/Requests/Case",
@@ -68,8 +68,7 @@ DEFAULT_CFG = {
     "amber_hex": "#ffffcc",
     "header_text": "",
     "placeholder_heading": "statement by {other-editor}",
-    "session_file": "~/wordcountclerkbot/cookies/session.pkl",
-    "session_max_age": 86400,  # 24 hours in seconds
+    "session_file": "~/wordcountclerkbot/cookies/cookies.txt",
 }
 
 CFG: Dict[str, object] = DEFAULT_CFG.copy()
@@ -490,79 +489,43 @@ def load_settings(path: str = SETTINGS_PATH) -> None:
         with open(path) as f:
             CFG.update(json.load(f))
 
-def save_session(site: mwclient.Site, session_file: str) -> None:
-    """Save the authenticated session to disk."""
-    try:
-        session_data = {
-            'cookies': site.connection.cookies,
-            'logged_in': site.logged_in,
-            'timestamp': time.time()
-        }
-        os.makedirs(os.path.dirname(session_file), exist_ok=True)
-        with open(session_file, 'wb') as f:
-            pickle.dump(session_data, f)
-        LOG.debug("Session saved to %s", session_file)
-    except Exception as e:
-        LOG.warning("Failed to save session: %s", e)
-
-def load_session(site: mwclient.Site, session_file: str) -> bool:
-    """Load and restore an authenticated session from disk."""
-    try:
-        if not os.path.exists(session_file):
-            return False
-            
-        with open(session_file, 'rb') as f:
-            session_data = pickle.load(f)
-        
-        # Check if session is too old
-        max_age = int(CFG["session_max_age"])
-        if time.time() - session_data.get('timestamp', 0) > max_age:
-            LOG.debug("Session expired, removing file")
-            os.remove(session_file)
-            return False
-        
-        # Restore session
-        site.connection.cookies.update(session_data['cookies'])
-        site._logged_in = session_data['logged_in']
-        
-        # Verify the session still works
-        try:
-            # Try a simple API call that requires authentication
-            site.api('query', meta='userinfo')
-            LOG.debug("Session successfully restored")
-            return True
-        except Exception:
-            LOG.debug("Session invalid, removing file")
-            os.remove(session_file)
-            return False
-            
-    except Exception as e:
-        LOG.warning("Failed to load session: %s", e)
-        return False
-
 def connect() -> mwclient.Site:
-    """Login to MediaWiki and return a Site object with session persistence."""
+    """
+    Login to MediaWiki, persisting cookies in
+    a Mozilla‐format jar at CFG['session_file'].
+    """
+    # Prepare cookie‐jar
+    jar_path = os.path.expanduser(CFG["session_file"])
+    jar = http.cookiejar.MozillaCookieJar(jar_path)
+    if os.path.exists(jar_path):
+        try:
+            jar.load(ignore_discard=True, ignore_expires=True)
+            LOG.info("Loaded cookies from %s", jar_path)
+        except Exception:
+            LOG.warning("Could not load cookies, will start fresh")
+
+    # Attach to requests
     sess = requests.Session()
+    sess.cookies = jar
+
     site = mwclient.Site(
-        str(CFG["site"]),
-        path=str(CFG["path"]),
-        clients_useragent=str(CFG["ua"]),
+        CFG["site"],
+        path=CFG["path"],
+        clients_useragent=CFG["ua"],
         pool=sess,
     )
-    
-    session_file = str(CFG["session_file"])
-    
-    # Try to restore existing session first
-    if load_session(site, session_file):
-        LOG.info("Reusing existing session")
-        return site
-    
-    # If no valid session, login fresh
+
+    # If not logged in, do fresh login and save jar
     if not site.logged_in:
         LOG.info("Logging in fresh")
-        site.login(str(CFG["user"]), str(CFG["bot_password"]))
-        save_session(site, session_file)
-    
+        site.login(CFG["user"], CFG["bot_password"])
+        os.makedirs(os.path.dirname(jar_path), exist_ok=True)
+        try:
+            jar.save(ignore_discard=True, ignore_expires=True)
+            LOG.debug("Saved cookies to %s", jar_path)
+        except Exception as e:
+            LOG.warning("Failed to save cookies: %s", e)
+
     return site
 
 def fetch_page(site: mwclient.Site, title: str) -> str:

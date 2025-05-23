@@ -14,6 +14,6 @@
   "red_hex": "#ffcccc",
   "placeholder_heading": "statement by {other-editor}",
   "header_text": "",
-  "session_file": "~/wordcountclerkbot/cookies/session.pkl",
+  "session_file": "~/wordcountclerkbot/cookies/cookies.txt",
   "session_max_age": 86400
 } 

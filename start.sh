@@ -11,12 +11,10 @@ if [ -z "$BOT_PASSWORD" ]; then
     exit 1
 fi
 
-# Set default paths
-COOKIE_PATH="${COOKIE_PATH:-/app/cookies/cookies.txt}"
-SESSION_FILE="${SESSION_FILE:-/data/cookies/session.pkl}"
+# Set default cookie-jar location
+SESSION_FILE="${SESSION_FILE:-/app/cookies/cookies.txt}"
 
-# Create required directories
-mkdir -p "$(dirname "$COOKIE_PATH")"
+# Create required directory
 mkdir -p "$(dirname "$SESSION_FILE")"
 
 # Generate settings.json from environment variables
@@ -27,7 +25,6 @@ cat > settings.json << EOF
   "user": "${BOT_USER}",
   "bot_password": "${BOT_PASSWORD}",
   "ua": "${USER_AGENT:-KevinClerkBot/0.5 (https://github.com/L235/WordcountClerkBot)}",
-  "cookie_path": "${COOKIE_PATH}",
   "arca_page": "${ARCA_PAGE:-Wikipedia:Arbitration/Requests/Clarification and Amendment}",
   "target_page": "${TARGET_PAGE:-User:KevinClerkBot/ArbCom word counts}",
   "data_page": "${DATA_PAGE:-User:KevinClerkBot/ArbCom word counts/data}",
@@ -37,8 +34,7 @@ cat > settings.json << EOF
   "red_hex": "${RED_HEX:-#ffcccc}",
   "placeholder_heading": "${PLACEHOLDER_HEADING:-statement by {other-editor}}",
   "header_text": "${HEADER_TEXT:-}",
-  "session_file": "${SESSION_FILE}",
-  "session_max_age": ${SESSION_MAX_AGE:-86400}
+  "session_file": "${SESSION_FILE}"
 }
 EOF
 
