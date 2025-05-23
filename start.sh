@@ -42,5 +42,5 @@ cat > settings.json << EOF
 }
 EOF
 
-# Run the bot
-exec python arca_wordcount_bot.py "$@" 
+# Run the bot with all arguments
+python arca_wordcount_bot.py "$@" 

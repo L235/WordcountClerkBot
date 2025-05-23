@@ -16,5 +16,5 @@ RUN mkdir -p /app/cookies && \
 
 # Run the bot in single-run mode by default
 # This can be overridden by passing different arguments
-ENTRYPOINT ["/bin/sh", "-c", "./start.sh \"$@\"", "--"]
+ENTRYPOINT ["./start.sh"]
 CMD ["-1"] 
