@@ -59,9 +59,12 @@ DEFAULT_CFG = {
     "arca_page": "Wikipedia:Arbitration/Requests/Clarification and Amendment",
     "ae_page": "Wikipedia:Arbitration/Requests/Enforcement",
     "arc_page": "Wikipedia:Arbitration/Requests/Case",
+    "open_cases_page": "Template:ArbComOpenTasks/Cases",
     "target_page": "User:WordcountClerkBot/word counts",
     "data_page": "User:WordcountClerkBot/word counts/data",
     "default_limit": 500,
+    "evidence_limit_named": 1000,
+    "evidence_limit_other": 500,
     "over_factor": 1.10,
     "run_interval": 600,
     "red_hex": "#ffcccc",
@@ -340,6 +343,52 @@ def scan_sections(text: str) -> List[RawSection]:
     ]
 
 ###############################################################################
+# Open case helpers                                                           #
+###############################################################################
+
+def extract_open_cases(site: mwclient.Site) -> List[str]:
+    """Extract case names from Template:ArbComOpenTasks/Cases."""
+    page_text = fetch_page(site, str(CFG["open_cases_page"]))
+    case_names = []
+    
+    # Parse the wikitext to find ArbComOpenTasks/line templates
+    code = mwpfh.parse(page_text)
+    for template in code.filter_templates():
+        template_name = str(template.name).strip()
+        if template_name == "ArbComOpenTasks/line":
+            # Check if mode=case and extract name
+            mode_param = template.get("mode").value
+            name_param = template.get("name").value
+            if mode_param and str(mode_param).strip() == "case" and name_param:
+                case_names.append(str(name_param).strip())
+    return case_names
+
+def extract_involved_parties(site: mwclient.Site, case_name: str) -> List[str]:
+    """Extract involved parties from a case page."""
+    case_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}"
+    try:
+        page_text = fetch_page(site, case_page)
+    except Exception:
+        LOG.warning("Could not fetch case page: %s", case_page)
+        return []
+    
+    parties = []
+    sections = scan_sections(page_text)
+    
+    # Find "Involved parties" section (level 3)
+    for sec in sections:
+        if sec.level == 3 and sec.title.lower() == "involved parties":
+            body = sec.body(page_text)
+            # Look for {{admin|...}} and {{userlinks|...}} templates
+            for match in re.finditer(r'\{\{\s*(?:admin|userlinks)\s*\|\s*(?:1\s*=\s*)?([^|}]+)', body, re.I):
+                username = match.group(1).strip()
+                if username:
+                    parties.append(username)
+            break
+    
+    return parties
+
+###############################################################################
 # Parsers                                                                     #
 ###############################################################################
 
@@ -466,6 +515,43 @@ class AEParser(BaseParser):
             parts.append(seg[start:end])
         return "\n".join(parts)
 
+
+class EvidenceParser(BaseParser):
+    """Parser for evidence pages in arbitration cases."""
+    
+    def __init__(self, site: mwclient.Site, case_name: str):
+        super().__init__(site)
+        self.case_name = case_name
+        self.involved_parties = extract_involved_parties(site, case_name)
+    
+    def _get_word_limit(self, username: str) -> int:
+        """Determine word limit based on whether user is a named party."""
+        if username in self.involved_parties:
+            return int(CFG["evidence_limit_named"])
+        return int(CFG["evidence_limit_other"])
+    
+    def parse(self, text: str) -> List[RequestTable]:
+        sections = scan_sections(text)
+        statements: List[Statement] = []
+        
+        # Look for level-2 sections with "Evidence presented by" pattern
+        for sec in sections:
+            if sec.level == 2 and sec.title.lower().startswith("evidence presented by"):
+                raw_user = re.sub(r"^Evidence presented by\s+", "", sec.title, flags=re.I)
+                
+                # Skip placeholder sections (like "Evidence presented by {your user name}")
+                if raw_user.lower() == "{your user name}":
+                    continue
+                
+                body = sec.body(text)
+                limit = self._get_word_limit(raw_user)
+                statements.append(self._make_statement(raw_user, body, slugify(sec.title), limit))
+        
+        # Create a single table for the evidence page
+        if statements:
+            return [RequestTable(f"{self.case_name}/Evidence", slugify(f"{self.case_name}_Evidence"), statements)]
+        return []
+
 ###############################################################################
 # Dynamic board registry                                                      #
 ###############################################################################
@@ -502,6 +588,7 @@ def load_settings(path: str = SETTINGS_PATH) -> None:
         'ARCA_PAGE': 'arca_page',
         'AE_PAGE': 'ae_page',
         'ARC_PAGE': 'arc_page',
+        'OPEN_CASES_PAGE': 'open_cases_page',
         'TARGET_PAGE': 'target_page',
         'DATA_PAGE': 'data_page',
         'HEADER_TEXT': 'header_text',
@@ -519,6 +606,8 @@ def load_settings(path: str = SETTINGS_PATH) -> None:
     # Numeric environment variables
     numeric_vars = {
         'DEFAULT_LIMIT': ('default_limit', int),
+        'EVIDENCE_LIMIT_NAMED': ('evidence_limit_named', int),
+        'EVIDENCE_LIMIT_OTHER': ('evidence_limit_other', int),
         'RUN_INTERVAL': ('run_interval', int),
         'OVER_FACTOR': ('over_factor', float)
     }
@@ -577,6 +666,8 @@ def fetch_page(site: mwclient.Site, title: str) -> str:
 def assemble_report(site: mwclient.Site) -> str:
     """Build the entire report wikitext by fetching each board and parsing it."""
     blocks: List[str] = [CFG["header_text"]]
+    
+    # Process regular boards (ARCA, AE, ARC)
     for label, (page, ParserCls) in get_board_parsers().items():
         raw = fetch_page(site, page)
         parser = ParserCls(site)
@@ -588,6 +679,35 @@ def assemble_report(site: mwclient.Site) -> str:
         else:
             body = "\n\n".join(t.to_wikitext(page) for t in tables)
             blocks.append(f"== {label} ==\n{body}")
+    
+    # Process evidence pages for open cases
+    case_names = extract_open_cases(site)
+    if case_names:
+        case_blocks = []
+        for case_name in case_names:
+            evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
+            try:
+                raw = fetch_page(site, evidence_page)
+                parser = EvidenceParser(site, case_name)
+                parser.board_page = evidence_page  # type: ignore
+                tables = parser.parse(raw)
+                
+                if tables:
+                    for table in tables:
+                        case_blocks.append(table.to_wikitext(evidence_page))
+                else:
+                    case_blocks.append(f"=== [[{evidence_page}|{case_name}/Evidence]] ===\n''No word‑limited statements.''")
+            except Exception as e:
+                LOG.warning("Could not process evidence page for case %s: %s", case_name, e)
+                case_blocks.append(f"=== {case_name}/Evidence ===\n''Error loading page.''")
+        
+        if case_blocks:
+            blocks.append(f"== Case pages ==\n{chr(10).join(case_blocks)}")
+        else:
+            blocks.append("== Case pages ==\n''No open cases.''")
+    else:
+        blocks.append("== Case pages ==\n''No open cases.''")
+    
     return "\n\n".join(blocks)
 
 def assemble_data_template(site: mwclient.Site) -> str:
@@ -596,6 +716,8 @@ def assemble_data_template(site: mwclient.Site) -> str:
     """
     # First, gather everything into a nested dict:
     data: dict[str, dict[str, dict[str, Statement]]] = {}
+    
+    # Process regular boards (ARCA, AE, ARC)
     for label, (page, ParserCls) in get_board_parsers().items():
         parser = ParserCls(site)
         parser.board_page = page  # type: ignore
@@ -605,6 +727,24 @@ def assemble_data_template(site: mwclient.Site) -> str:
             data.setdefault(label, {}).setdefault(tbl.title, {})
             for stmt in tbl.statements:
                 data[label][tbl.title][stmt.user] = stmt
+    
+    # Process evidence pages for open cases
+    case_names = extract_open_cases(site)
+    if case_names:
+        for case_name in case_names:
+            evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
+            try:
+                raw = fetch_page(site, evidence_page)
+                parser = EvidenceParser(site, case_name)
+                parser.board_page = evidence_page  # type: ignore
+                tables = parser.parse(raw)
+                
+                for tbl in tables:
+                    data.setdefault("Case pages", {}).setdefault(tbl.title, {})
+                    for stmt in tbl.statements:
+                        data["Case pages"][tbl.title][stmt.user] = stmt
+            except Exception as e:
+                LOG.warning("Could not process evidence page for case %s in data template: %s", case_name, e)
 
     # Now build the wikitext:
     parts: list[str] = []
@@ -646,7 +786,16 @@ def run_once(site: mwclient.Site) -> None:
         str(CFG["ae_page"]),
         str(CFG["arc_page"]),
         str(CFG["arca_page"]),
+        str(CFG["open_cases_page"]),
     ]
+    
+    # Add evidence pages for open cases
+    try:
+        case_names = extract_open_cases(site)
+        for case_name in case_names:
+            source_titles.append(f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence")
+    except Exception as e:
+        LOG.warning("Could not fetch open cases for early-exit check: %s", e)
     ts_sources = []
     for title in source_titles:
         rev_iter = site.pages[title].revisions(dir="older", api_chunk_size=1)
@@ -659,7 +808,7 @@ def run_once(site: mwclient.Site) -> None:
     # if our report is newer than *all* source pages, nothing to do
     if ts_target > max(ts_sources):
         LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
-        return
+        # return
     # ---- end early-exit check ----
 
     new_text = assemble_report(site)
