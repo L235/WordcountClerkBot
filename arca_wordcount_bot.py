@@ -385,7 +385,7 @@ def extract_involved_parties(site: mwclient.Site, case_name: str) -> List[str]:
                 if username:
                     parties.append(username)
             break
-    print(f"parties: {parties}")
+    
     return parties
 
 ###############################################################################
