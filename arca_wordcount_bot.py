@@ -482,12 +482,54 @@ def get_board_parsers() -> Dict[str, Tuple[str, Type[BaseParser]]]:
 ###############################################################################
 
 def load_settings(path: str = SETTINGS_PATH) -> None:
-    """Load JSON settings into CFG (overrides defaults)."""
-    defaults = DEFAULT_CFG.copy()
-    CFG.update(defaults)
+    """Load settings from JSON file, then override with environment variables."""
+    # Start with defaults
+    CFG.update(DEFAULT_CFG.copy())
+    
+    # Load from JSON file if it exists
     if os.path.exists(path):
         with open(path) as f:
             CFG.update(json.load(f))
+    
+    # Override with environment variables if present
+    env_overrides = {
+        'SITE': 'site',
+        'API_PATH': 'path',
+        'BOT_USER': 'user',
+        'BOT_PASSWORD': 'bot_password',
+        'USER_AGENT': 'ua',
+        'SESSION_FILE': 'session_file',
+        'ARCA_PAGE': 'arca_page',
+        'AE_PAGE': 'ae_page',
+        'ARC_PAGE': 'arc_page',
+        'TARGET_PAGE': 'target_page',
+        'DATA_PAGE': 'data_page',
+        'HEADER_TEXT': 'header_text',
+        'PLACEHOLDER_HEADING': 'placeholder_heading',
+        'RED_HEX': 'red_hex',
+        'AMBER_HEX': 'amber_hex'
+    }
+    
+    # String environment variables
+    for env_var, cfg_key in env_overrides.items():
+        value = os.getenv(env_var)
+        if value is not None:
+            CFG[cfg_key] = value
+    
+    # Numeric environment variables
+    numeric_vars = {
+        'DEFAULT_LIMIT': ('default_limit', int),
+        'RUN_INTERVAL': ('run_interval', int),
+        'OVER_FACTOR': ('over_factor', float)
+    }
+    
+    for env_var, (cfg_key, converter) in numeric_vars.items():
+        value = os.getenv(env_var)
+        if value is not None:
+            try:
+                CFG[cfg_key] = converter(value)
+            except ValueError:
+                LOG.warning(f"Invalid {env_var} value: {value}, using default")
 
 def connect() -> mwclient.Site:
     """
