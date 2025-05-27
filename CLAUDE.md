@@ -10,7 +10,7 @@ WordcountClerkBot is a MediaWiki bot that monitors Wikipedia arbitration request
 
 - **arca_wordcount_bot.py**: Main bot script containing all logic
 - **settings.json**: Configuration file (created from settings.json.example)
-- **start.sh**: Entry script that generates settings.json from environment variables
+- **start.sh**: Entry script that prepares the cookie directory and invokes the Python script, which directly handles environment variables
 - **Dockerfile**: Container configuration for deployment
 - **railway.json**: Railway.app deployment configuration with cron schedule
 
