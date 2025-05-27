@@ -65,7 +65,7 @@ When running in Docker or on Railway, you can omit `settings.json` and set:
 | `BOT_USER`            | **(required)**                       | Bot username                        |
 | `BOT_PASSWORD`        | **(required)**                       | Bot password                        |
 | `USER_AGENT`          | `WordcountClerkBot/2.4 (<repo URL>)` | User-agent string                   |
-| `COOKIE_PATH`         | `/app/cookies/cookies.txt`           | Path for cookies                    |
+| `SESSION_FILE`        | `/app/cookies/cookies.txt`           | Path for cookies                    |
 | `ARCA_PAGE`           | *same as `arca_page` above*          | ARCA requests page title            |
 | `AE_PAGE`             | *same as `ae_page` above*            | AE requests page title              |
 | `ARC_PAGE`            | *same as `arc_page` above*           | ARC requests page title             |

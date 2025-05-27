@@ -12,8 +12,8 @@ if [ -z "$BOT_PASSWORD" ]; then
 fi
 
 # Create cookie directory if needed
-COOKIE_PATH="${COOKIE_PATH:-/app/cookies/cookies.txt}"
-mkdir -p "$(dirname "$COOKIE_PATH")"
+SESSION_FILE="${SESSION_FILE:-/app/cookies/cookies.txt}"
+mkdir -p "$(dirname "$SESSION_FILE")"
 
 # Python script now handles environment variables directly
 python arca_wordcount_bot.py "$@" 

@@ -498,7 +498,7 @@ def load_settings(path: str = SETTINGS_PATH) -> None:
         'BOT_USER': 'user',
         'BOT_PASSWORD': 'bot_password',
         'USER_AGENT': 'ua',
-        'COOKIE_PATH': 'session_file',
+        'SESSION_FILE': 'session_file',
         'ARCA_PAGE': 'arca_page',
         'AE_PAGE': 'ae_page',
         'ARC_PAGE': 'arc_page',
