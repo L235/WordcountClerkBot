@@ -62,6 +62,7 @@ DEFAULT_CFG = {
     "open_cases_page": "Template:ArbComOpenTasks/Cases",
     "target_page": "User:WordcountClerkBot/word counts",
     "data_page": "User:WordcountClerkBot/word counts/data",
+    "extended_page": "User:WordcountClerkBot/word counts/extended",
     "default_limit": 500,
     "evidence_limit_named": 1000,
     "evidence_limit_other": 500,
@@ -218,6 +219,11 @@ class RequestTable:
         "! User !! Section !! Words !! Uncollapsed&nbsp;words !! Limit !! Status\n"
     )
 
+    EXTENDED_HEADER: ClassVar[str] = (
+        "{| class=\"wikitable sortable\"\n"
+        "! User !! Section !! Words !! Uncollapsed&nbsp;words !! Limit !! Status !! Template\n"
+    )
+
     def to_wikitext(self, board_page: str) -> str:
         heading_link = f"[[{board_page}#{self.anchor}|{self.title}]]"
         heading_line = f"=== {heading_link} ==="
@@ -239,6 +245,30 @@ class RequestTable:
                 f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value}"
             )
         return heading_line + "\n" + self.HEADER + "\n".join(rows) + "\n|}"
+
+    def to_extended_wikitext(self, board_page: str, label: str) -> str:
+        heading_link = f"[[{board_page}#{self.anchor}|{self.title}]]"
+        heading_line = f"=== {heading_link} ==="
+        if self.closed:
+            heading_line += "\n''(closed)''"
+
+        if not self.statements:
+            return heading_line + "\n''No word‑limited statements.''"
+
+        rows = []
+        for s in self.statements:
+            if not s.user:
+                continue
+            style = f" style=\"background:{s.colour}\"" if s.colour else ""
+            template = f"{{{{ACWordStatus|page={label}|section={self.title}|user={s.user}}}}}"
+            rows.append(
+                f"|-{style}\n"
+                f"| [[User:{s.user}|{s.user}]] "
+                f"|| [[{board_page}#{s.anchor}|link]] "
+                f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value} "
+                f"|| <nowiki>{template}</nowiki>"
+            )
+        return heading_line + "\n" + self.EXTENDED_HEADER + "\n".join(rows) + "\n|}"
 
 ###############################################################################
 # Word‑count helpers                                                          #
@@ -535,7 +565,7 @@ class EvidenceParser(BaseParser):
         statements: List[Statement] = []
         
         # Look for level-2 sections with "Evidence presented by" pattern
-        for sec in sections:
+        for i, sec in enumerate(sections):
             if sec.level == 2 and sec.title.lower().startswith("evidence presented by"):
                 raw_user = re.sub(r"^Evidence presented by\s+", "", sec.title, flags=re.I)
                 
@@ -543,7 +573,22 @@ class EvidenceParser(BaseParser):
                 if raw_user.lower() == "{your user name}":
                     continue
                 
-                body = sec.body(text)
+                # Find the start of the next level-2 section (or end of text)
+                next2_start = next(
+                    (s.start for s in sections[i+1:] if s.level == 2),
+                    len(text)
+                )
+                
+                # Get all level-3 subsections within this level-2 section
+                subsection_texts = []
+                for subsec in sections[i+1:]:
+                    if subsec.start >= next2_start:
+                        break
+                    if subsec.level == 3:
+                        subsection_texts.append(subsec.body(text))
+                
+                # Combine all subsection texts
+                body = "\n\n".join(subsection_texts)
                 limit = self._get_word_limit(raw_user)
                 statements.append(self._make_statement(raw_user, body, slugify(sec.title), limit))
         
@@ -591,6 +636,7 @@ def load_settings(path: str = SETTINGS_PATH) -> None:
         'OPEN_CASES_PAGE': 'open_cases_page',
         'TARGET_PAGE': 'target_page',
         'DATA_PAGE': 'data_page',
+        'EXTENDED_PAGE': 'extended_page',
         'HEADER_TEXT': 'header_text',
         'PLACEHOLDER_HEADING': 'placeholder_heading',
         'RED_HEX': 'red_hex',
@@ -766,6 +812,53 @@ def assemble_data_template(site: mwclient.Site) -> str:
 
     return "\n".join(parts)
 
+def assemble_extended_report(site: mwclient.Site) -> str:
+    """Build the extended report wikitext with template column."""
+    blocks: List[str] = [CFG["header_text"]]
+    
+    # Process regular boards (ARCA, AE, ARC)
+    for label, (page, ParserCls) in get_board_parsers().items():
+        raw = fetch_page(site, page)
+        parser = ParserCls(site)
+        parser.board_page = page  # type: ignore
+        tables = parser.parse(raw)
+
+        if not tables:
+            blocks.append(f"== {label} ==\n''No open requests.''")
+        else:
+            body = "\n\n".join(t.to_extended_wikitext(page, label) for t in tables)
+            blocks.append(f"== {label} ==\n{body}")
+    
+    # Process evidence pages for open cases
+    case_names = extract_open_cases(site)
+    if case_names:
+        case_blocks = []
+        for case_name in case_names:
+            evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
+            try:
+                raw = fetch_page(site, evidence_page)
+                parser = EvidenceParser(site, case_name)
+                parser.board_page = evidence_page  # type: ignore
+                tables = parser.parse(raw)
+                
+                if tables:
+                    for table in tables:
+                        case_blocks.append(table.to_extended_wikitext(evidence_page, "Case pages"))
+                else:
+                    case_blocks.append(f"=== [[{evidence_page}|{case_name}/Evidence]] ===\n''No word‑limited statements.''")
+            except Exception as e:
+                LOG.warning("Could not process evidence page for case %s: %s", case_name, e)
+                case_blocks.append(f"=== {case_name}/Evidence ===\n''Error loading page.''")
+        
+        if case_blocks:
+            blocks.append(f"== Case pages ==\n{chr(10).join(case_blocks)}")
+        else:
+            blocks.append("== Case pages ==\n''No open cases.''")
+    else:
+        blocks.append("== Case pages ==\n''No open cases.''")
+    
+    return "\n\n".join(blocks)
+
 def run_once(site: mwclient.Site) -> None:
     """
     Build report, compare to target page, and save if changed.
@@ -808,7 +901,7 @@ def run_once(site: mwclient.Site) -> None:
     # if our report is newer than *all* source pages, nothing to do
     if ts_target > max(ts_sources):
         LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
-        # return
+        return
     # ---- end early-exit check ----
 
     new_text = assemble_report(site)
@@ -848,6 +941,18 @@ def run_once(site: mwclient.Site) -> None:
                            minor=True,
                            bot=False)
             LOG.info("Updated data template page.")
+
+        # now update the extended page
+        extended_title = str(CFG["extended_page"])
+        extended_page = site.pages[extended_title]
+        new_extended = assemble_extended_report(site)
+        if new_extended != extended_page.text():
+            extended_page.save(new_extended,
+                           summary= (f"Updating extended report ({a} open requests, {z} statements)"
+                                     f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
+                           minor=True,
+                           bot=False)
+            LOG.info("Updated extended report page.")
     else:
         LOG.info("No changes detected.")
 
