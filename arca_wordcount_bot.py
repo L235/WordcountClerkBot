@@ -709,17 +709,53 @@ def fetch_page(site: mwclient.Site, title: str) -> str:
     """Fetch wikitext body of `title` from the wiki."""
     return site.pages[title].text()
 
-def assemble_report(site: mwclient.Site) -> str:
-    """Build the entire report wikitext by fetching each board and parsing it."""
-    blocks: List[str] = [CFG["header_text"]]
+@dataclass
+class ParsedData:
+    """Container for parsed board and evidence data."""
+    boards: Dict[str, List[RequestTable]]
+    evidence: Dict[str, List[RequestTable]]
+
+def collect_all_data(site: mwclient.Site) -> ParsedData:
+    """Collect and parse all board and evidence page data once."""
+    boards = {}
+    evidence = {}
     
     # Process regular boards (ARCA, AE, ARC)
     for label, (page, ParserCls) in get_board_parsers().items():
-        raw = fetch_page(site, page)
-        parser = ParserCls(site)
-        parser.board_page = page  # type: ignore
-        tables = parser.parse(raw)
+        try:
+            raw = fetch_page(site, page)
+            parser = ParserCls(site)
+            parser.board_page = page  # type: ignore
+            boards[label] = parser.parse(raw)
+        except Exception as e:
+            LOG.warning("Could not process board %s: %s", label, e)
+            boards[label] = []
+    
+    # Process evidence pages for open cases
+    try:
+        case_names = extract_open_cases(site)
+        for case_name in case_names:
+            evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
+            try:
+                raw = fetch_page(site, evidence_page)
+                parser = EvidenceParser(site, case_name)
+                parser.board_page = evidence_page  # type: ignore
+                evidence[case_name] = parser.parse(raw)
+            except Exception as e:
+                LOG.warning("Could not process evidence page for case %s: %s", case_name, e)
+                evidence[case_name] = []
+    except Exception as e:
+        LOG.warning("Could not fetch open cases: %s", e)
+    
+    return ParsedData(boards, evidence)
 
+def assemble_report_from_data(data: ParsedData) -> str:
+    """Build the entire report wikitext from parsed data."""
+    blocks: List[str] = [CFG["header_text"]]
+    
+    # Process regular boards (ARCA, AE, ARC)
+    for label, (page, _) in get_board_parsers().items():
+        tables = data.boards.get(label, [])
         if not tables:
             blocks.append(f"== {label} ==\n''No open requests.''")
         else:
@@ -727,25 +763,15 @@ def assemble_report(site: mwclient.Site) -> str:
             blocks.append(f"== {label} ==\n{body}")
     
     # Process evidence pages for open cases
-    case_names = extract_open_cases(site)
-    if case_names:
+    if data.evidence:
         case_blocks = []
-        for case_name in case_names:
+        for case_name, tables in data.evidence.items():
             evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
-            try:
-                raw = fetch_page(site, evidence_page)
-                parser = EvidenceParser(site, case_name)
-                parser.board_page = evidence_page  # type: ignore
-                tables = parser.parse(raw)
-                
-                if tables:
-                    for table in tables:
-                        case_blocks.append(table.to_wikitext(evidence_page))
-                else:
-                    case_blocks.append(f"=== [[{evidence_page}|{case_name}/Evidence]] ===\n''No word‑limited statements.''")
-            except Exception as e:
-                LOG.warning("Could not process evidence page for case %s: %s", case_name, e)
-                case_blocks.append(f"=== {case_name}/Evidence ===\n''Error loading page.''")
+            if tables:
+                for table in tables:
+                    case_blocks.append(table.to_wikitext(evidence_page))
+            else:
+                case_blocks.append(f"=== [[{evidence_page}|{case_name}/Evidence]] ===\n''No word‑limited statements.''")
         
         if case_blocks:
             blocks.append(f"== Case pages ==\n{chr(10).join(case_blocks)}")
@@ -756,7 +782,11 @@ def assemble_report(site: mwclient.Site) -> str:
     
     return "\n\n".join(blocks)
 
-def assemble_data_template(site: mwclient.Site) -> str:
+def assemble_report(site: mwclient.Site) -> str:
+    """Build the entire report wikitext by fetching each board and parsing it."""
+    return assemble_report_from_data(collect_all_data(site))
+
+def assemble_data_template_from_data(parsed_data: ParsedData) -> str:
     """
     Build a nested #switch template containing full data for each statement.
     """
@@ -764,33 +794,19 @@ def assemble_data_template(site: mwclient.Site) -> str:
     data: dict[str, dict[str, dict[str, Statement]]] = {}
     
     # Process regular boards (ARCA, AE, ARC)
-    for label, (page, ParserCls) in get_board_parsers().items():
-        parser = ParserCls(site)
-        parser.board_page = page  # type: ignore
-        raw = fetch_page(site, page)
-        for tbl in parser.parse(raw):
+    for label, tables in parsed_data.boards.items():
+        for tbl in tables:
             # Use the title instead of anchor for the key to preserve spaces
             data.setdefault(label, {}).setdefault(tbl.title, {})
             for stmt in tbl.statements:
                 data[label][tbl.title][stmt.user] = stmt
     
     # Process evidence pages for open cases
-    case_names = extract_open_cases(site)
-    if case_names:
-        for case_name in case_names:
-            evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
-            try:
-                raw = fetch_page(site, evidence_page)
-                parser = EvidenceParser(site, case_name)
-                parser.board_page = evidence_page  # type: ignore
-                tables = parser.parse(raw)
-                
-                for tbl in tables:
-                    data.setdefault("Case pages", {}).setdefault(tbl.title, {})
-                    for stmt in tbl.statements:
-                        data["Case pages"][tbl.title][stmt.user] = stmt
-            except Exception as e:
-                LOG.warning("Could not process evidence page for case %s in data template: %s", case_name, e)
+    for case_name, tables in parsed_data.evidence.items():
+        for tbl in tables:
+            data.setdefault("Case pages", {}).setdefault(tbl.title, {})
+            for stmt in tbl.statements:
+                data["Case pages"][tbl.title][stmt.user] = stmt
 
     # Now build the wikitext:
     parts: list[str] = []
@@ -812,17 +828,19 @@ def assemble_data_template(site: mwclient.Site) -> str:
 
     return "\n".join(parts)
 
-def assemble_extended_report(site: mwclient.Site) -> str:
-    """Build the extended report wikitext with template column."""
+def assemble_data_template(site: mwclient.Site) -> str:
+    """
+    Build a nested #switch template containing full data for each statement.
+    """
+    return assemble_data_template_from_data(collect_all_data(site))
+
+def assemble_extended_report_from_data(data: ParsedData) -> str:
+    """Build the extended report wikitext with template column from parsed data."""
     blocks: List[str] = [CFG["header_text"]]
     
     # Process regular boards (ARCA, AE, ARC)
-    for label, (page, ParserCls) in get_board_parsers().items():
-        raw = fetch_page(site, page)
-        parser = ParserCls(site)
-        parser.board_page = page  # type: ignore
-        tables = parser.parse(raw)
-
+    for label, (page, _) in get_board_parsers().items():
+        tables = data.boards.get(label, [])
         if not tables:
             blocks.append(f"== {label} ==\n''No open requests.''")
         else:
@@ -830,25 +848,15 @@ def assemble_extended_report(site: mwclient.Site) -> str:
             blocks.append(f"== {label} ==\n{body}")
     
     # Process evidence pages for open cases
-    case_names = extract_open_cases(site)
-    if case_names:
+    if data.evidence:
         case_blocks = []
-        for case_name in case_names:
+        for case_name, tables in data.evidence.items():
             evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
-            try:
-                raw = fetch_page(site, evidence_page)
-                parser = EvidenceParser(site, case_name)
-                parser.board_page = evidence_page  # type: ignore
-                tables = parser.parse(raw)
-                
-                if tables:
-                    for table in tables:
-                        case_blocks.append(table.to_extended_wikitext(evidence_page, "Case pages"))
-                else:
-                    case_blocks.append(f"=== [[{evidence_page}|{case_name}/Evidence]] ===\n''No word‑limited statements.''")
-            except Exception as e:
-                LOG.warning("Could not process evidence page for case %s: %s", case_name, e)
-                case_blocks.append(f"=== {case_name}/Evidence ===\n''Error loading page.''")
+            if tables:
+                for table in tables:
+                    case_blocks.append(table.to_extended_wikitext(evidence_page, "Case pages"))
+            else:
+                case_blocks.append(f"=== [[{evidence_page}|{case_name}/Evidence]] ===\n''No word‑limited statements.''")
         
         if case_blocks:
             blocks.append(f"== Case pages ==\n{chr(10).join(case_blocks)}")
@@ -858,6 +866,10 @@ def assemble_extended_report(site: mwclient.Site) -> str:
         blocks.append("== Case pages ==\n''No open cases.''")
     
     return "\n\n".join(blocks)
+
+def assemble_extended_report(site: mwclient.Site) -> str:
+    """Build the extended report wikitext with template column."""
+    return assemble_extended_report_from_data(collect_all_data(site))
 
 def run_once(site: mwclient.Site) -> None:
     """
@@ -904,15 +916,21 @@ def run_once(site: mwclient.Site) -> None:
         return
     # ---- end early-exit check ----
 
-    new_text = assemble_report(site)
+    # Collect all data once
+    data = collect_all_data(site)
+    
+    # Generate all three outputs using the shared data
+    new_text = assemble_report_from_data(data)
+    new_data = assemble_data_template_from_data(data)
+    new_extended = assemble_extended_report_from_data(data)
+    
     if new_text != target.text():
-        # recompute stats for the edit summary
+        # compute stats for the edit summary using the shared data
         all_tables: List[RequestTable] = []
-        for label, (page, Pcls) in get_board_parsers().items():
-            raw = fetch_page(site, page)
-            parser = Pcls(site)
-            parser.board_page = page  # type: ignore
-            all_tables.extend(parser.parse(raw))
+        for tables in data.boards.values():
+            all_tables.extend(tables)
+        for tables in data.evidence.values():
+            all_tables.extend(tables)
 
         # Only count open requests and their statements
         open_tables = [tbl for tbl in all_tables if not tbl.closed]
@@ -933,7 +951,6 @@ def run_once(site: mwclient.Site) -> None:
         # now update the data‐template page
         data_title = str(CFG["data_page"])
         data_page = site.pages[data_title]
-        new_data = assemble_data_template(site)
         if new_data != data_page.text():
             data_page.save(new_data,
                            summary= (f"Updating data template ({a} open requests, {z} statements)"
@@ -945,7 +962,6 @@ def run_once(site: mwclient.Site) -> None:
         # now update the extended page
         extended_title = str(CFG["extended_page"])
         extended_page = site.pages[extended_title]
-        new_extended = assemble_extended_report(site)
         if new_extended != extended_page.text():
             extended_page.save(new_extended,
                            summary= (f"Updating extended report ({a} open requests, {z} statements)"
