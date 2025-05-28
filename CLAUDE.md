@@ -41,10 +41,10 @@ cp settings.json.example settings.json
 docker build -t wordcount-bot .
 
 # Run once with environment variables
-docker run --rm -e BOT_USER=YourBot -e BOT_PASSWORD=secret wordcount-bot
+docker run --rm -e BOT_USER=YourBot -e BOT_PASSWORD=secret wordcount-bot --once
 
 # Run continuously
-docker run --rm -e BOT_USER=YourBot -e BOT_PASSWORD=secret wordcount-bot --
+docker run --rm -e BOT_USER=YourBot -e BOT_PASSWORD=secret wordcount-bot
 ```
 
 ## Architecture
@@ -80,4 +80,9 @@ docker run --rm -e BOT_USER=YourBot -e BOT_PASSWORD=secret wordcount-bot --
 ## Deployment Modes
 - **Local**: Direct Python execution with settings.json
 - **Docker**: Container with environment variable configuration
-- **Railway.app**: Automated cron deployment (every 5 minutes per railway.json)
+- **Railway.app**: Automated cron deployment (every 15 minutes per railway.json)
+
+## Testing and Quality
+- No automated test suite - manual testing via debug mode
+- No linting configuration - code follows Python 3.11+ standards
+- Dependencies: mwclient, mwparserfromhell, requests, beautifulsoup4
