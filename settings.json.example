@@ -9,6 +9,7 @@
   "open_cases_page": "Template:ArbComOpenTasks/Cases",
   "target_page": "User:KevinClerkBot/ArbCom word counts",
   "data_page": "User:KevinClerkBot/ArbCom word counts/data",
+  "extended_page": "User:KevinClerkBot/ArbCom word counts/extended",
   "default_limit": 500,
   "evidence_limit_named": 1000,
   "evidence_limit_other": 500,

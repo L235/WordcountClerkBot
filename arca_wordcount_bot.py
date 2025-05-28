@@ -636,6 +636,7 @@ def load_settings(path: str = SETTINGS_PATH) -> None:
         'OPEN_CASES_PAGE': 'open_cases_page',
         'TARGET_PAGE': 'target_page',
         'DATA_PAGE': 'data_page',
+        'EXTENDED_PAGE': 'extended_page',
         'HEADER_TEXT': 'header_text',
         'PLACEHOLDER_HEADING': 'placeholder_heading',
         'RED_HEX': 'red_hex',
