@@ -114,10 +114,11 @@ LOG.addHandler(h_err)
 # Regex helpers & constants                                                   #
 ###############################################################################
 
-WORD_RE = re.compile(r"\b\w+(?:['-]\w+)*\b")
-HEADING_RE = re.compile(r"^(={2,6})\s*(.*?)\s*\1\s*$", re.M)
-AWL_RE = re.compile(r"\{\{\s*ApprovedWordLimit[^}]*?\bwords\s*=\s*(\d+)", re.I | re.S)
-TEMPLATE_RE = re.compile(r"\{\{\s*(?:ApprovedWordLimit|ACWordStatus)[^}]*}}", re.I | re.S)
+WORD_RE        = re.compile(r"\b\w+(?:['-]\w+)*\b")
+HEADING_RE     = re.compile(r"^(={2,6})\s*(.*?)\s*\1\s*$", re.M)
+AWL_RE         = re.compile(r"\{\{\s*ApprovedWordLimit[^}]*?\bwords\s*=\s*(\d+)", re.I | re.S)
+TEMPLATE_RE    = re.compile(r"\{\{\s*(?:ApprovedWordLimit|ACWordStatus)[^}]*}}", re.I | re.S)
+ACWORDSTATUS_RE = re.compile(r"\{\{\s*ACWordStatus\b", re.I)
 PAREN_RE = re.compile(r"^(.*?)(\s*\([^()]+\)\s*)$")
 HAT_OPEN_RE = re.compile(r"\{\{\s*hat", re.I)
 _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
@@ -189,6 +190,7 @@ class Statement:
     visible: int
     expanded: int
     limit: int
+    has_status_template: bool = False
 
     @property
     def status(self) -> Status:
@@ -261,12 +263,22 @@ class RequestTable:
                 continue
             style = f" style=\"background:{s.colour}\"" if s.colour else ""
             template = f"{{{{ACWordStatus|page={label}|section={self.title}|user={s.user}}}}}"
+
+            # yellow‑highlight the cell only when the template is **missing**
+            if s.has_status_template:
+                template_cell = f"|| <nowiki>{template}</nowiki>"
+            else:
+                template_cell = (
+                    f'|| style="background:{CFG["amber_hex"]}" | '
+                    f'<nowiki>{template}</nowiki>'
+                )
+
             rows.append(
                 f"|-{style}\n"
                 f"| [[User:{s.user}|{s.user}]] "
                 f"|| [[{board_page}#{s.anchor}|link]] "
                 f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value} "
-                f"|| <nowiki>{template}</nowiki>"
+                f"{template_cell}"
             )
         return heading_line + "\n" + self.EXTENDED_HEADER + "\n".join(rows) + "\n|}"
 
@@ -441,6 +453,8 @@ class BaseParser:
         self, raw_user: str, body: str, anchor: str, limit: int | None = None
     ) -> Statement:
         limit_val = self._extract_limit(body, limit)
+        # detect ACWordStatus before we strip all templates
+        has_acwordstatus = bool(ACWORDSTATUS_RE.search(body))
         body_no_templates = TEMPLATE_RE.sub("", body)
         visible = visible_word_count(self.site, body_no_templates)
         expanded = rendered_word_count(self.site, body_no_templates)
@@ -450,6 +464,7 @@ class BaseParser:
             visible,
             expanded,
             limit_val,
+            has_acwordstatus,
         )
 
     def parse(self, text: str) -> List[RequestTable]:
@@ -573,24 +588,21 @@ class EvidenceParser(BaseParser):
                 if raw_user.lower() == "{your user name}":
                     continue
                 
-                # Find the start of the next level-2 section (or end of text)
+                # Find the start of the next level‑2 section (or EOF)
                 next2_start = next(
                     (s.start for s in sections[i+1:] if s.level == 2),
                     len(text)
                 )
+
+                # ── NEW: include *everything* between the level‑2 heading
+                # and the next level‑2 (or EOF).  This ensures that prose
+                # between the heading and the first === subsection is counted.
+                body = text[sec.start:next2_start]
                 
-                # Get all level-3 subsections within this level-2 section
-                subsection_texts = []
-                for subsec in sections[i+1:]:
-                    if subsec.start >= next2_start:
-                        break
-                    if subsec.level == 3:
-                        subsection_texts.append(subsec.body(text))
-                
-                # Combine all subsection texts
-                body = "\n\n".join(subsection_texts)
                 limit = self._get_word_limit(raw_user)
-                statements.append(self._make_statement(raw_user, body, slugify(sec.title), limit))
+                statements.append(
+                    self._make_statement(raw_user, body, slugify(sec.title), limit)
+                )
         
         # Create a single table for the evidence page
         if statements:
@@ -913,7 +925,7 @@ def run_once(site: mwclient.Site) -> None:
     # if our report is newer than *all* source pages, nothing to do
     if ts_target > max(ts_sources):
         LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
-        return
+        # return
     # ---- end early-exit check ----
 
     # Collect all data once
