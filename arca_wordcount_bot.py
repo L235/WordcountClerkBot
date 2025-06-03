@@ -925,7 +925,7 @@ def run_once(site: mwclient.Site) -> None:
     # if our report is newer than *all* source pages, nothing to do
     if ts_target > max(ts_sources):
         LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
-        # return
+        return
     # ---- end early-exit check ----
 
     # Collect all data once
