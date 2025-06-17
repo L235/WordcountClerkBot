@@ -328,13 +328,29 @@ def rendered_word_count(site: mwclient.Site, wikitext: str) -> int:
 
 def visible_word_count(site: mwclient.Site, wikitext: str) -> int:
     """
-    Replicates front‑end wordcount.js - now uses passed site object.
+    Approximate the front-end wordcount.js logic for "visible words".
+    * Render the snippet through the MediaWiki API.
+    * Remove anything that the canonical script ignores:
+        – hidden / collapsed / struck-through elements  
+        – page-furniture boxes  
+        – reference-list content (text produced from <ref> tags)  
+        – localcomments spans  
+        – timestamps (hh:mm, d Month yyyy UTC)
     """
     html = _api_render(site, wikitext)  # Pass site instead of reconnecting
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1 – elements hidden via inline style
+    # 0 – drop reference lists generated from <ref>…</ref>
+    #     (ol.references / .reflist blocks are *not* part of the prose limit)
+    for tag in soup.select("ol.references, div.references, div.reflist"):
+        tag.decompose()
+
+    # 1 – elements hidden outright
     for tag in soup.select('[style*="display:none" i]'):
+        tag.decompose()
+
+    # 1a – HTML5/ARIA hidden helpers (also matched by jQuery :hidden)
+    for tag in soup.select("[hidden], [aria-hidden='true']"):
         tag.decompose()
 
     # 2 – collapsed content
@@ -347,6 +363,10 @@ def visible_word_count(site: mwclient.Site, wikitext: str) -> int:
 
     # 4 – page furniture
     for tag in soup.select('div#siteSub, div#contentSub, div#jump-to-nav'):
+        tag.decompose()
+
+    # 4a – inline talk-page comments (ignored by frontend via .ignore())
+    for tag in soup.select("span.localcomments"):
         tag.decompose()
 
     # 5 – plain text & cleanup
