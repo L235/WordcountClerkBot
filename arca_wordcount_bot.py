@@ -159,8 +159,11 @@ def fuzzy_username(header: str, body: str) -> str:
     Returns:
         Best matching username, preferring exact matches from links
     """
-    simple = strip_parenthetical(header, body)
-    cands = user_links(body)
+    def capitalize_first(s: str) -> str:
+        return s[0].upper() + s[1:] if s else s
+    
+    simple = capitalize_first(strip_parenthetical(header, body))
+    cands = [capitalize_first(c) for c in user_links(body)]
     if not cands:
         return simple
     for c in cands:
