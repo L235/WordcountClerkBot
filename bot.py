@@ -33,6 +33,7 @@ from functools import lru_cache
 from typing import ClassVar, List, Dict, Tuple, Type
 from datetime import datetime, timezone
 import pickle
+import hashlib
 import http.cookiejar
 
 # ---------------------------------------------------------------------------
@@ -295,33 +296,57 @@ def _api_render_cached(site_url: str, api_path: str, wikitext: str) -> str:
     pass  # Implementation moved to _api_render
 
 def _api_render(site: mwclient.Site, wikitext: str) -> str:
-    """Call parse API once per unique wikitext using provided site."""
-    # Create a cache key that doesn't include the site object
-    cache_key = (str(site.host), str(site.path), wikitext)
-    
-    # Try to get from a simple in-memory cache first
-    if not hasattr(_api_render, '_cache'):
-        _api_render._cache = {}
-    
-    if cache_key in _api_render._cache:
-        return _api_render._cache[cache_key]
-    
-    # Make the API call with the provided site
+    """
+    Call parse API once per unique wikitext using provided site, with a
+    small on‑disk cache in CFG['STATE_DIR'] so we don't reparse unchanged
+    snippets across runs.
+    """
+    # ---- lazy disk‑cache bootstrap ----------------------------------------
+    if not hasattr(_api_render, "_disk_cache"):
+        state_dir = os.path.expanduser(str(CFG["STATE_DIR"]))
+        os.makedirs(state_dir, exist_ok=True)
+        _api_render._disk_cache_path = os.path.join(state_dir, "render_cache.pkl")
+        try:
+            with open(_api_render._disk_cache_path, "rb") as fh:
+                _api_render._disk_cache = pickle.load(fh)
+        except Exception:
+            _api_render._disk_cache = {}
+    # -----------------------------------------------------------------------
+    # Use a short hash key to avoid giant pickles/filenames.
+    raw_key = f"{site.host}|{site.path}|{wikitext}".encode("utf-8")
+    cache_key = hashlib.sha1(raw_key).hexdigest()
+    if cache_key in _api_render._disk_cache:
+        return _api_render._disk_cache[cache_key]
+
+    # Not cached: hit the API.
     result = site.api(
         "parse", text=wikitext, prop="text", contentmodel="wikitext"
     )["parse"]["text"]["*"]
-    
-    # Cache the result
-    _api_render._cache[cache_key] = result
-    
-    # Limit cache size to prevent memory issues
-    if len(_api_render._cache) > 1000:
-        # Remove oldest entries (simple FIFO)
-        keys_to_remove = list(_api_render._cache.keys())[:100]
-        for key in keys_to_remove:
-            del _api_render._cache[key]
-    
+
+    # Store & prune.
+    _api_render._disk_cache[cache_key] = result
+    # Hard cap ~1000 entries; drop oldest ~100 (insertion‑ordered dict).
+    if len(_api_render._disk_cache) > 1000:
+        for k in list(_api_render._disk_cache.keys())[:100]:
+            del _api_render._disk_cache[k]
+    # Persist to disk occasionally (every 20 new inserts).
+    _api_render._writes = getattr(_api_render, "_writes", 0) + 1
+    if _api_render._writes % 20 == 0:
+        try:
+            with open(_api_render._disk_cache_path, "wb") as fh:
+                pickle.dump(_api_render._disk_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            LOG.debug("Could not write render cache: %s", e)
     return result
+
+def _flush_render_cache() -> None:
+    """Force a cache write; safe to call at shutdown."""
+    if hasattr(_api_render, "_disk_cache_path"):
+        try:
+            with open(_api_render._disk_cache_path, "wb") as fh:
+                pickle.dump(_api_render._disk_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            LOG.debug("Could not write render cache: %s", e)
 
 def rendered_word_count(site: mwclient.Site, wikitext: str) -> int:
     """Count words in rendered HTML, including hidden content."""
@@ -987,6 +1012,7 @@ def main(loop: bool, debug: bool) -> None:
     site = connect()
     if not loop:
         run_once(site)
+        _flush_render_cache()
     else:
         interval = int(CFG["RUN_INTERVAL"])
         while True:
@@ -995,6 +1021,7 @@ def main(loop: bool, debug: bool) -> None:
             except Exception:
                 LOG.exception("Error; sleeping before retry")
             time.sleep(interval)
+            _flush_render_cache()
 
 def _parse_ts(ts) -> datetime:
     """
