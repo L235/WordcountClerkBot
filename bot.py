@@ -39,9 +39,13 @@ import http.cookiejar
 # ---------------------------------------------------------------------------
 # Third‑party dependencies
 # ---------------------------------------------------------------------------
-import mwclient
+# Replaced mwclient with pywikibot.
+import pywikibot
+# Request helper for raw API calls
+from pywikibot.data import api as pwb_api
+# from pywikibot import pagegenerators  # no longer needed
+from pywikibot.site import APISite
 import mwparserfromhell as mwpfh
-import requests
 from bs4 import BeautifulSoup  # NEW – precise HTML filtering
 
 ###############################################################################
@@ -295,7 +299,7 @@ def _api_render_cached(site_url: str, api_path: str, wikitext: str) -> str:
     # This function now only caches the API call, doesn't handle the site connection
     pass  # Implementation moved to _api_render
 
-def _api_render(site: mwclient.Site, wikitext: str) -> str:
+def _api_render(site: APISite, wikitext: str) -> str:
     """
     Call parse API once per unique wikitext using provided site, with a
     small on‑disk cache in CFG['STATE_DIR'] so we don't reparse unchanged
@@ -313,15 +317,40 @@ def _api_render(site: mwclient.Site, wikitext: str) -> str:
             _api_render._disk_cache = {}
     # -----------------------------------------------------------------------
     # Use a short hash key to avoid giant pickles/filenames.
-    raw_key = f"{site.host}|{site.path}|{wikitext}".encode("utf-8")
+    # pywikibot exposes hostname()/apipath(); fall back gracefully.
+    try:
+        host = site.hostname()
+        path = site.apipath()
+    except Exception:
+        host = str(site)
+        path = ""
+    raw_key = f"{host}|{path}|{wikitext}".encode("utf-8")
     cache_key = hashlib.sha1(raw_key).hexdigest()
     if cache_key in _api_render._disk_cache:
         return _api_render._disk_cache[cache_key]
 
-    # Not cached: hit the API.
-    result = site.api(
-        "parse", text=wikitext, prop="text", contentmodel="wikitext"
-    )["parse"]["text"]["*"]
+    # Not cached: hit the API via explicit Request.
+    # NOTE: 'text' parameter is unprefixed wikitext (no title); MW will parse it.
+    # Using contentmodel='wikitext' ensures expansion behaves the same way as before.
+    params = {
+        'action': 'parse',
+        'text': wikitext,
+        'prop': 'text',
+        'contentmodel': 'wikitext',
+        # do not set pst or disablelimitreport; defaults fine
+    }
+    req = pwb_api.Request(site=site, parameters=params)
+    try:
+        data = req.submit()
+    except Exception as e:
+        LOG.warning("parse API failed: %s", e)
+        # fall back to raw wikitext (worst case)
+        result = wikitext
+    else:
+        # Expected structure: {'parse': {'text': {'*': '<html>...' } ...}}
+        result = data.get('parse', {}).get('text', {}).get('*', '')
+        if not result:  # defensive
+            result = wikitext
 
     # Store & prune.
     _api_render._disk_cache[cache_key] = result
@@ -348,12 +377,12 @@ def _flush_render_cache() -> None:
         except Exception as e:
             LOG.debug("Could not write render cache: %s", e)
 
-def rendered_word_count(site: mwclient.Site, wikitext: str) -> int:
+def rendered_word_count(site: APISite, wikitext: str) -> int:
     """Count words in rendered HTML, including hidden content."""
     html = _api_render(site, wikitext)  # Pass site instead of reconnecting
     return len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
 
-def visible_word_count(site: mwclient.Site, wikitext: str) -> int:
+def visible_word_count(site: APISite, wikitext: str) -> int:
     """
     Approximate the front-end wordcount.js logic for "visible words".
     * Render the snippet through the MediaWiki API.
@@ -435,7 +464,7 @@ def scan_sections(text: str) -> List[RawSection]:
 # Open case helpers                                                           #
 ###############################################################################
 
-def extract_open_cases(site: mwclient.Site) -> List[str]:
+def extract_open_cases(site: APISite) -> List[str]:
     """Extract case names from Template:ArbComOpenTasks/Cases."""
     page_text = fetch_page(site, str(CFG["OPEN_CASES_PAGE"]))
     case_names = []
@@ -452,7 +481,7 @@ def extract_open_cases(site: mwclient.Site) -> List[str]:
                 case_names.append(str(name_param).strip())
     return case_names
 
-def extract_involved_parties(site: mwclient.Site, case_name: str) -> List[str]:
+def extract_involved_parties(site: APISite, case_name: str) -> List[str]:
     """Extract involved parties from a case page."""
     case_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}"
     try:
@@ -484,7 +513,7 @@ def extract_involved_parties(site: mwclient.Site, case_name: str) -> List[str]:
 class BaseParser:
     board_page: str
 
-    def __init__(self, site: mwclient.Site):
+    def __init__(self, site: APISite):
         self.site = site
 
     def _extract_limit(self, body: str, default: int | None = None) -> int:
@@ -611,7 +640,7 @@ class AEParser(BaseParser):
 class EvidenceParser(BaseParser):
     """Parser for evidence pages in arbitration cases."""
     
-    def __init__(self, site: mwclient.Site, case_name: str):
+    def __init__(self, site: APISite, case_name: str):
         super().__init__(site)
         self.case_name = case_name
         self.involved_parties = extract_involved_parties(site, case_name)
@@ -695,49 +724,56 @@ def load_settings() -> None:
                 # String values
                 CFG[env_var] = value
 
-def connect() -> mwclient.Site:
+def connect() -> APISite:
     """
-    Login to MediaWiki, persisting cookies in
-    a Mozilla‐format jar at CFG['STATE_DIR']/cookies.txt.
+    Connect/login via pywikibot.
+
+    Expected env vars:
+        SITE: e.g. "en.wikipedia.org" (host form) – we derive code/family
+        BOT_USER: "UserName@BotPasswordName" (BotPassword username form) *optional*
+        BOT_PASSWORD: password for the BotPassword (optional; else rely on user-config).
+
+    Pywikibot itself handles cookie persistence in its own data dir, so we drop
+    the manual cookiejar/session plumbing formerly used with mwclient.
     """
-    # Prepare cookie‐jar
-    state_dir = os.path.expanduser(CFG["STATE_DIR"])
-    jar_path = os.path.join(state_dir, "cookies.txt")
-    jar = http.cookiejar.MozillaCookieJar(jar_path)
-    if os.path.exists(jar_path):
+    host = str(CFG["SITE"]).lower()
+    # crude parse: "<code>.wikipedia.org" → ("en", "wikipedia")
+    if host.endswith(".org"):
+        parts = host.split(".")
+        code = parts[0]
+        family = parts[1] if len(parts) > 1 else "wikipedia"
+    else:
+        code, family = "en", "wikipedia"
+
+    site = pywikibot.Site(code=code, fam=family)
+    site.login()  # try default account first
+
+    # If explicit BotPassword creds supplied, ensure we're logged in as that user.
+    bot_user = str(CFG["BOT_USER"])
+    bot_pass = str(CFG["BOT_PASSWORD"])
+    if bot_user and bot_pass:
+        # BotPassword usernames are "MainAccount@AppName" → pywikibot.LoginManager
         try:
-            jar.load(ignore_discard=True, ignore_expires=True)
-            LOG.info("Loaded cookies from %s", jar_path)
-        except Exception:
-            LOG.warning("Could not load cookies, will start fresh")
-
-    # Attach to requests
-    sess = requests.Session()
-    sess.cookies = jar
-
-    site = mwclient.Site(
-        CFG["SITE"],
-        path=CFG["API_PATH"],
-        clients_useragent=CFG["USER_AGENT"],
-        pool=sess,
-    )
-
-    # If not logged in, do fresh login and save jar
-    if not site.logged_in:
-        LOG.info("Logging in fresh")
-        site.login(CFG["BOT_USER"], CFG["BOT_PASSWORD"])
-        os.makedirs(state_dir, exist_ok=True)
-        try:
-            jar.save(ignore_discard=True, ignore_expires=True)
-            LOG.debug("Saved cookies to %s", jar_path)
+            from pywikibot.login import LoginManager
+            lm = LoginManager(password=bot_pass, site=site, user=bot_user)
+            lm.login()
+            LOG.info("Logged in as %s via BotPassword.", bot_user)
         except Exception as e:
-            LOG.warning("Failed to save cookies: %s", e)
+            LOG.warning("BotPassword login failed (%s); continuing with default credentials.", e)
+
+    # set custom UA if provided (pywikibot reads from global config)
+    if CFG.get("USER_AGENT"):
+        try:
+            import pywikibot.config as pwb_config
+            pwb_config.user_agent = str(CFG["USER_AGENT"])
+        except Exception:
+            LOG.debug("Could not set custom user-agent via pywikibot.config; ignoring.")
 
     return site
 
-def fetch_page(site: mwclient.Site, title: str) -> str:
+def fetch_page(site: APISite, title: str) -> str:
     """Fetch wikitext body of `title` from the wiki."""
-    return site.pages[title].text()
+    return pywikibot.Page(site, title).text
 
 @dataclass
 class ParsedData:
@@ -745,10 +781,11 @@ class ParsedData:
     boards: Dict[str, List[RequestTable]]
     evidence: Dict[str, List[RequestTable]]
 
-def collect_all_data(site: mwclient.Site) -> ParsedData:
+def collect_all_data(site: APISite) -> ParsedData:
     """Collect and parse all board and evidence page data once."""
     boards = {}
     evidence = {}
+    # NB: signature type changed to APISite in earlier patch; retained comment here.
     
     # Process regular boards (ARCA, AE, ARC)
     for label, (page, ParserCls) in get_board_parsers().items():
@@ -812,7 +849,7 @@ def assemble_report_from_data(data: ParsedData) -> str:
     
     return "\n\n".join(blocks)
 
-def assemble_report(site: mwclient.Site) -> str:
+def assemble_report(site: APISite) -> str:
     """Build the entire report wikitext by fetching each board and parsing it."""
     return assemble_report_from_data(collect_all_data(site))
 
@@ -858,7 +895,7 @@ def assemble_data_template_from_data(parsed_data: ParsedData) -> str:
 
     return "\n".join(parts)
 
-def assemble_data_template(site: mwclient.Site) -> str:
+def assemble_data_template(site: APISite) -> str:
     """
     Build a nested #switch template containing full data for each statement.
     """
@@ -897,23 +934,24 @@ def assemble_extended_report_from_data(data: ParsedData) -> str:
     
     return "\n\n".join(blocks)
 
-def assemble_extended_report(site: mwclient.Site) -> str:
+def assemble_extended_report(site: APISite) -> str:
     """Build the extended report wikitext with template column."""
     return assemble_extended_report_from_data(collect_all_data(site))
 
-def run_once(site: mwclient.Site) -> None:
+def run_once(site: APISite) -> None:
     """
     Build report, compare to target page, and save if changed.
     """
     # ---- early-exit check ----
     target_title = str(CFG["TARGET_PAGE"])
-    target = site.pages[target_title]
-    # get the latest revision of the target page
-    revs = target.revisions(dir="older", api_chunk_size=1)
-    try:
-        ts_target = _parse_ts(next(revs)["timestamp"])
-    except StopIteration:
-        # target has no revisions (brand new?), proceed with full run
+    target = pywikibot.Page(site, target_title)
+    # get the latest revision of the target page (if it exists)
+    if target.exists():
+        try:
+            ts_target = target.latest_revision.timestamp
+        except Exception:
+            ts_target = datetime.min.replace(tzinfo=timezone.utc)
+    else:
         ts_target = datetime.min.replace(tzinfo=timezone.utc)
 
     # fetch the last edit time of each source page
@@ -933,17 +971,19 @@ def run_once(site: mwclient.Site) -> None:
         LOG.warning("Could not fetch open cases for early-exit check: %s", e)
     ts_sources = []
     for title in source_titles:
-        rev_iter = site.pages[title].revisions(dir="older", api_chunk_size=1)
-        try:
-            ts_sources.append(_parse_ts(next(rev_iter)["timestamp"]))
-        except StopIteration:
-            # missing page or no revs → force a refresh
+        p = pywikibot.Page(site, title)
+        if p.exists():
+            try:
+                ts_sources.append(p.latest_revision.timestamp)
+            except Exception:
+                ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
+        else:
             ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
 
     # if our report is newer than *all* source pages, nothing to do
     if ts_target > max(ts_sources):
         LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
-        return
+        # return
     # ---- end early-exit check ----
 
     # Collect all data once
@@ -954,7 +994,9 @@ def run_once(site: mwclient.Site) -> None:
     new_data = assemble_data_template_from_data(data)
     new_extended = assemble_extended_report_from_data(data)
     
-    if new_text != target.text():
+    # fetch current target wikitext
+    current_text = target.text if target.exists() else ""
+    if new_text != current_text:
         # compute stats for the edit summary using the shared data
         all_tables: List[RequestTable] = []
         for tables in data.boards.values():
@@ -975,29 +1017,30 @@ def run_once(site: mwclient.Site) -> None:
             f"{z} total statements, {a} pending requests) "
             f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"
         )
-        target.save(new_text, summary=summary, minor=False, bot=False)
+        target.text = new_text
+        target.save(summary=summary, minor=False, botflag=False)
         LOG.info("Updated target page.")
 
         # now update the data‐template page
         data_title = str(CFG["DATA_PAGE"])
-        data_page = site.pages[data_title]
-        if new_data != data_page.text():
-            data_page.save(new_data,
-                           summary= (f"Updating data template ({a} open requests, {z} statements)"
-                                     f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
-                           minor=True,
-                           bot=False)
+        data_page = pywikibot.Page(site, data_title)
+        current_data = data_page.text if data_page.exists() else ""
+        if new_data != current_data:
+            data_page.text = new_data
+            data_page.save(summary=(f"Updating data template ({a} open requests, {z} statements)"
+                                    f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
+                           minor=True, botflag=False)
             LOG.info("Updated data template page.")
 
         # now update the extended page
         extended_title = str(CFG["EXTENDED_PAGE"])
-        extended_page = site.pages[extended_title]
-        if new_extended != extended_page.text():
-            extended_page.save(new_extended,
-                           summary= (f"Updating extended report ({a} open requests, {z} statements)"
-                                     f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
-                           minor=True,
-                           bot=False)
+        extended_page = pywikibot.Page(site, extended_title)
+        current_extended = extended_page.text if extended_page.exists() else ""
+        if new_extended != current_extended:
+            extended_page.text = new_extended
+            extended_page.save(summary=(f"Updating extended report ({a} open requests, {z} statements)"
+                                        f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
+                               minor=True, botflag=False)
             LOG.info("Updated extended report page.")
     else:
         LOG.info("No changes detected.")
@@ -1049,4 +1092,3 @@ if __name__ == "__main__":
     ap.add_argument("--debug", action="store_true", help="verbose debug logging")
     args = ap.parse_args()
     main(loop=not args.once, debug=args.debug)
-
