@@ -70,7 +70,7 @@ DEFAULT_CFG = {
     "AMBER_HEX": "#ffff0040",
     "HEADER_TEXT": "",
     "PLACEHOLDER_HEADING": "statement by {other-editor}",
-    "SESSION_FILE": "~/wordcountclerkbot/cookies/cookies.txt",
+    "STATE_DIR": ".",
 }
 
 # Global configuration dictionary
@@ -673,10 +673,11 @@ def load_settings() -> None:
 def connect() -> mwclient.Site:
     """
     Login to MediaWiki, persisting cookies in
-    a Mozilla‐format jar at CFG['SESSION_FILE'].
+    a Mozilla‐format jar at CFG['STATE_DIR']/cookies.txt.
     """
     # Prepare cookie‐jar
-    jar_path = os.path.expanduser(CFG["SESSION_FILE"])
+    state_dir = os.path.expanduser(CFG["STATE_DIR"])
+    jar_path = os.path.join(state_dir, "cookies.txt")
     jar = http.cookiejar.MozillaCookieJar(jar_path)
     if os.path.exists(jar_path):
         try:
@@ -700,7 +701,7 @@ def connect() -> mwclient.Site:
     if not site.logged_in:
         LOG.info("Logging in fresh")
         site.login(CFG["BOT_USER"], CFG["BOT_PASSWORD"])
-        os.makedirs(os.path.dirname(jar_path), exist_ok=True)
+        os.makedirs(state_dir, exist_ok=True)
         try:
             jar.save(ignore_discard=True, ignore_expires=True)
             LOG.debug("Saved cookies to %s", jar_path)
