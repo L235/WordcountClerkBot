@@ -10,5 +10,4 @@ env/
 venv/
 .venv/
 arca_wordcount_bot.log
-cookies.txt
-settings.json 
+cookies.txt 

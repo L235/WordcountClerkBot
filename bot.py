@@ -21,7 +21,6 @@ from __future__ import annotations
 # Standard library imports
 # ---------------------------------------------------------------------------
 import argparse
-import json
 import logging
 import os
 import re
@@ -34,6 +33,7 @@ from functools import lru_cache
 from typing import ClassVar, List, Dict, Tuple, Type
 from datetime import datetime, timezone
 import pickle
+import hashlib
 import http.cookiejar
 
 # ---------------------------------------------------------------------------
@@ -48,34 +48,34 @@ from bs4 import BeautifulSoup  # NEW – precise HTML filtering
 # Configuration                                                               #
 ###############################################################################
 
-SETTINGS_PATH = "settings.json"
-
+# Default configuration values
 DEFAULT_CFG = {
-    "site": "en.wikipedia.org",
-    "path": "/w/",
-    "user": "BotUser@PasswordName",
-    "bot_password": "",
-    "ua": "WordcountClerkBot/2.4 (https://github.com/L235/WordcountClerkBot)",
-    "arca_page": "Wikipedia:Arbitration/Requests/Clarification and Amendment",
-    "ae_page": "Wikipedia:Arbitration/Requests/Enforcement",
-    "arc_page": "Wikipedia:Arbitration/Requests/Case",
-    "open_cases_page": "Template:ArbComOpenTasks/Cases",
-    "target_page": "User:WordcountClerkBot/word counts",
-    "data_page": "User:WordcountClerkBot/word counts/data",
-    "extended_page": "User:WordcountClerkBot/word counts/extended",
-    "default_limit": 500,
-    "evidence_limit_named": 1000,
-    "evidence_limit_other": 500,
-    "over_factor": 1.10,
-    "run_interval": 600,
-    "red_hex": "#ff000040",
-    "amber_hex": "#ffff0040",
-    "header_text": "",
-    "placeholder_heading": "statement by {other-editor}",
-    "session_file": "~/wordcountclerkbot/cookies/cookies.txt",
+    "SITE": "en.wikipedia.org",
+    "API_PATH": "/w/",
+    "BOT_USER": "BotUser@PasswordName",
+    "BOT_PASSWORD": "",
+    "USER_AGENT": "WordcountClerkBot/2.4 (https://github.com/L235/WordcountClerkBot)",
+    "ARCA_PAGE": "Wikipedia:Arbitration/Requests/Clarification and Amendment",
+    "AE_PAGE": "Wikipedia:Arbitration/Requests/Enforcement",
+    "ARC_PAGE": "Wikipedia:Arbitration/Requests/Case",
+    "OPEN_CASES_PAGE": "Template:ArbComOpenTasks/Cases",
+    "TARGET_PAGE": "User:WordcountClerkBot/word counts",
+    "DATA_PAGE": "User:WordcountClerkBot/word counts/data",
+    "EXTENDED_PAGE": "User:WordcountClerkBot/word counts/extended",
+    "DEFAULT_LIMIT": 500,
+    "EVIDENCE_LIMIT_NAMED": 1000,
+    "EVIDENCE_LIMIT_OTHER": 500,
+    "OVER_FACTOR": 1.10,
+    "RUN_INTERVAL": 600,
+    "RED_HEX": "#ff000040",
+    "AMBER_HEX": "#ffff0040",
+    "HEADER_TEXT": "",
+    "PLACEHOLDER_HEADING": "statement by {other-editor}",
+    "STATE_DIR": ".",
 }
 
-CFG: Dict[str, object] = DEFAULT_CFG.copy()
+# Global configuration dictionary
+CFG: Dict[str, object] = {}
 
 ###############################################################################
 # Logging                                                                     #
@@ -199,15 +199,15 @@ class Statement:
     def status(self) -> Status:
         if self.visible <= self.limit:
             return Status.OK
-        if self.visible <= self.limit * float(CFG["over_factor"]):
+        if self.visible <= self.limit * float(CFG["OVER_FACTOR"]):
             return Status.WITHIN
         return Status.OVER
 
     @property
     def colour(self) -> str | None:
         mapping = {
-            Status.WITHIN: str(CFG["amber_hex"]),
-            Status.OVER: str(CFG["red_hex"]),
+            Status.WITHIN: str(CFG["AMBER_HEX"]),
+            Status.OVER: str(CFG["RED_HEX"]),
         }
         return mapping.get(self.status)
 
@@ -272,7 +272,7 @@ class RequestTable:
                 template_cell = f"|| <nowiki>{template}</nowiki>"
             else:
                 template_cell = (
-                    f'|| style="background:{CFG["amber_hex"]}" | '
+                    f'|| style="background:{CFG["AMBER_HEX"]}" | '
                     f'<nowiki>{template}</nowiki>'
                 )
 
@@ -296,33 +296,57 @@ def _api_render_cached(site_url: str, api_path: str, wikitext: str) -> str:
     pass  # Implementation moved to _api_render
 
 def _api_render(site: mwclient.Site, wikitext: str) -> str:
-    """Call parse API once per unique wikitext using provided site."""
-    # Create a cache key that doesn't include the site object
-    cache_key = (str(site.host), str(site.path), wikitext)
-    
-    # Try to get from a simple in-memory cache first
-    if not hasattr(_api_render, '_cache'):
-        _api_render._cache = {}
-    
-    if cache_key in _api_render._cache:
-        return _api_render._cache[cache_key]
-    
-    # Make the API call with the provided site
+    """
+    Call parse API once per unique wikitext using provided site, with a
+    small on‑disk cache in CFG['STATE_DIR'] so we don't reparse unchanged
+    snippets across runs.
+    """
+    # ---- lazy disk‑cache bootstrap ----------------------------------------
+    if not hasattr(_api_render, "_disk_cache"):
+        state_dir = os.path.expanduser(str(CFG["STATE_DIR"]))
+        os.makedirs(state_dir, exist_ok=True)
+        _api_render._disk_cache_path = os.path.join(state_dir, "render_cache.pkl")
+        try:
+            with open(_api_render._disk_cache_path, "rb") as fh:
+                _api_render._disk_cache = pickle.load(fh)
+        except Exception:
+            _api_render._disk_cache = {}
+    # -----------------------------------------------------------------------
+    # Use a short hash key to avoid giant pickles/filenames.
+    raw_key = f"{site.host}|{site.path}|{wikitext}".encode("utf-8")
+    cache_key = hashlib.sha1(raw_key).hexdigest()
+    if cache_key in _api_render._disk_cache:
+        return _api_render._disk_cache[cache_key]
+
+    # Not cached: hit the API.
     result = site.api(
         "parse", text=wikitext, prop="text", contentmodel="wikitext"
     )["parse"]["text"]["*"]
-    
-    # Cache the result
-    _api_render._cache[cache_key] = result
-    
-    # Limit cache size to prevent memory issues
-    if len(_api_render._cache) > 1000:
-        # Remove oldest entries (simple FIFO)
-        keys_to_remove = list(_api_render._cache.keys())[:100]
-        for key in keys_to_remove:
-            del _api_render._cache[key]
-    
+
+    # Store & prune.
+    _api_render._disk_cache[cache_key] = result
+    # Hard cap ~1000 entries; drop oldest ~100 (insertion‑ordered dict).
+    if len(_api_render._disk_cache) > 1000:
+        for k in list(_api_render._disk_cache.keys())[:100]:
+            del _api_render._disk_cache[k]
+    # Persist to disk occasionally (every 20 new inserts).
+    _api_render._writes = getattr(_api_render, "_writes", 0) + 1
+    if _api_render._writes % 20 == 0:
+        try:
+            with open(_api_render._disk_cache_path, "wb") as fh:
+                pickle.dump(_api_render._disk_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            LOG.debug("Could not write render cache: %s", e)
     return result
+
+def _flush_render_cache() -> None:
+    """Force a cache write; safe to call at shutdown."""
+    if hasattr(_api_render, "_disk_cache_path"):
+        try:
+            with open(_api_render._disk_cache_path, "wb") as fh:
+                pickle.dump(_api_render._disk_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            LOG.debug("Could not write render cache: %s", e)
 
 def rendered_word_count(site: mwclient.Site, wikitext: str) -> int:
     """Count words in rendered HTML, including hidden content."""
@@ -413,7 +437,7 @@ def scan_sections(text: str) -> List[RawSection]:
 
 def extract_open_cases(site: mwclient.Site) -> List[str]:
     """Extract case names from Template:ArbComOpenTasks/Cases."""
-    page_text = fetch_page(site, str(CFG["open_cases_page"]))
+    page_text = fetch_page(site, str(CFG["OPEN_CASES_PAGE"]))
     case_names = []
     
     # Parse the wikitext to find ArbComOpenTasks/line templates
@@ -470,7 +494,7 @@ class BaseParser:
                 return int(m.group(1))
             except ValueError:
                 LOG.debug("Invalid ApprovedWordLimit value: %s", m.group(1))
-        return default or int(CFG["default_limit"])
+        return default or int(CFG["DEFAULT_LIMIT"])
 
     def _make_statement(
         self, raw_user: str, body: str, anchor: str, limit: int | None = None
@@ -507,7 +531,7 @@ class SimpleBoardParser(BaseParser):
             statements: List[Statement] = []
             for st in lvl2.get_sections(levels=[3]):
                 heading = mwpfh.parse(st.filter_headings()[0].title).strip_code().strip()
-                if heading.lower() == CFG["placeholder_heading"]:
+                if heading.lower() == CFG["PLACEHOLDER_HEADING"]:
                     continue
                 if not heading.lower().startswith("statement by"):
                     continue
@@ -595,8 +619,8 @@ class EvidenceParser(BaseParser):
     def _get_word_limit(self, username: str) -> int:
         """Determine word limit based on whether user is a named party."""
         if username in self.involved_parties:
-            return int(CFG["evidence_limit_named"])
-        return int(CFG["evidence_limit_other"])
+            return int(CFG["EVIDENCE_LIMIT_NAMED"])
+        return int(CFG["EVIDENCE_LIMIT_OTHER"])
     
     def parse(self, text: str) -> List[RequestTable]:
         sections = scan_sections(text)
@@ -638,76 +662,47 @@ class EvidenceParser(BaseParser):
 
 def get_board_parsers() -> Dict[str, Tuple[str, Type[BaseParser]]]:
     return {
-        "ARCA": (str(CFG["arca_page"]), SimpleBoardParser),
-        "AE": (str(CFG["ae_page"]), AEParser),
-        "ARC": (str(CFG["arc_page"]), SimpleBoardParser),
+        "ARCA": (str(CFG["ARCA_PAGE"]), SimpleBoardParser),
+        "AE": (str(CFG["AE_PAGE"]), AEParser),
+        "ARC": (str(CFG["ARC_PAGE"]), SimpleBoardParser),
     }
 
 ###############################################################################
 # Runtime helpers                                                             #
 ###############################################################################
 
-def load_settings(path: str = SETTINGS_PATH) -> None:
-    """Load settings from JSON file, then override with environment variables."""
+def load_settings() -> None:
+    """Load settings from environment variables, falling back to defaults."""
     # Start with defaults
     CFG.update(DEFAULT_CFG.copy())
     
-    # Load from JSON file if it exists
-    if os.path.exists(path):
-        with open(path) as f:
-            CFG.update(json.load(f))
-    
-    # Override with environment variables if present
-    env_overrides = {
-        'SITE': 'site',
-        'API_PATH': 'path',
-        'BOT_USER': 'user',
-        'BOT_PASSWORD': 'bot_password',
-        'USER_AGENT': 'ua',
-        'SESSION_FILE': 'session_file',
-        'ARCA_PAGE': 'arca_page',
-        'AE_PAGE': 'ae_page',
-        'ARC_PAGE': 'arc_page',
-        'OPEN_CASES_PAGE': 'open_cases_page',
-        'TARGET_PAGE': 'target_page',
-        'DATA_PAGE': 'data_page',
-        'EXTENDED_PAGE': 'extended_page',
-        'HEADER_TEXT': 'header_text',
-        'PLACEHOLDER_HEADING': 'placeholder_heading',
-        'RED_HEX': 'red_hex',
-        'AMBER_HEX': 'amber_hex'
-    }
-    
-    # String environment variables
-    for env_var, cfg_key in env_overrides.items():
+    # Process all environment variables directly
+    for env_var in DEFAULT_CFG.keys():
         value = os.getenv(env_var)
         if value is not None:
-            CFG[cfg_key] = value
-    
-    # Numeric environment variables
-    numeric_vars = {
-        'DEFAULT_LIMIT': ('default_limit', int),
-        'EVIDENCE_LIMIT_NAMED': ('evidence_limit_named', int),
-        'EVIDENCE_LIMIT_OTHER': ('evidence_limit_other', int),
-        'RUN_INTERVAL': ('run_interval', int),
-        'OVER_FACTOR': ('over_factor', float)
-    }
-    
-    for env_var, (cfg_key, converter) in numeric_vars.items():
-        value = os.getenv(env_var)
-        if value is not None:
-            try:
-                CFG[cfg_key] = converter(value)
-            except ValueError:
-                LOG.warning(f"Invalid {env_var} value: {value}, using default")
+            # Handle numeric conversions
+            if env_var in ['DEFAULT_LIMIT', 'EVIDENCE_LIMIT_NAMED', 'EVIDENCE_LIMIT_OTHER', 'RUN_INTERVAL']:
+                try:
+                    CFG[env_var] = int(value)
+                except ValueError:
+                    LOG.warning(f"Invalid {env_var} value: {value}, using default")
+            elif env_var == 'OVER_FACTOR':
+                try:
+                    CFG[env_var] = float(value)
+                except ValueError:
+                    LOG.warning(f"Invalid {env_var} value: {value}, using default")
+            else:
+                # String values
+                CFG[env_var] = value
 
 def connect() -> mwclient.Site:
     """
     Login to MediaWiki, persisting cookies in
-    a Mozilla‐format jar at CFG['session_file'].
+    a Mozilla‐format jar at CFG['STATE_DIR']/cookies.txt.
     """
     # Prepare cookie‐jar
-    jar_path = os.path.expanduser(CFG["session_file"])
+    state_dir = os.path.expanduser(CFG["STATE_DIR"])
+    jar_path = os.path.join(state_dir, "cookies.txt")
     jar = http.cookiejar.MozillaCookieJar(jar_path)
     if os.path.exists(jar_path):
         try:
@@ -721,17 +716,17 @@ def connect() -> mwclient.Site:
     sess.cookies = jar
 
     site = mwclient.Site(
-        CFG["site"],
-        path=CFG["path"],
-        clients_useragent=CFG["ua"],
+        CFG["SITE"],
+        path=CFG["API_PATH"],
+        clients_useragent=CFG["USER_AGENT"],
         pool=sess,
     )
 
     # If not logged in, do fresh login and save jar
     if not site.logged_in:
         LOG.info("Logging in fresh")
-        site.login(CFG["user"], CFG["bot_password"])
-        os.makedirs(os.path.dirname(jar_path), exist_ok=True)
+        site.login(CFG["BOT_USER"], CFG["BOT_PASSWORD"])
+        os.makedirs(state_dir, exist_ok=True)
         try:
             jar.save(ignore_discard=True, ignore_expires=True)
             LOG.debug("Saved cookies to %s", jar_path)
@@ -786,7 +781,7 @@ def collect_all_data(site: mwclient.Site) -> ParsedData:
 
 def assemble_report_from_data(data: ParsedData) -> str:
     """Build the entire report wikitext from parsed data."""
-    blocks: List[str] = [CFG["header_text"]]
+    blocks: List[str] = [CFG["HEADER_TEXT"]]
     
     # Process regular boards (ARCA, AE, ARC)
     for label, (page, _) in get_board_parsers().items():
@@ -871,7 +866,7 @@ def assemble_data_template(site: mwclient.Site) -> str:
 
 def assemble_extended_report_from_data(data: ParsedData) -> str:
     """Build the extended report wikitext with template column from parsed data."""
-    blocks: List[str] = [CFG["header_text"]]
+    blocks: List[str] = [CFG["HEADER_TEXT"]]
     
     # Process regular boards (ARCA, AE, ARC)
     for label, (page, _) in get_board_parsers().items():
@@ -911,7 +906,7 @@ def run_once(site: mwclient.Site) -> None:
     Build report, compare to target page, and save if changed.
     """
     # ---- early-exit check ----
-    target_title = str(CFG["target_page"])
+    target_title = str(CFG["TARGET_PAGE"])
     target = site.pages[target_title]
     # get the latest revision of the target page
     revs = target.revisions(dir="older", api_chunk_size=1)
@@ -923,10 +918,10 @@ def run_once(site: mwclient.Site) -> None:
 
     # fetch the last edit time of each source page
     source_titles = [
-        str(CFG["ae_page"]),
-        str(CFG["arc_page"]),
-        str(CFG["arca_page"]),
-        str(CFG["open_cases_page"]),
+        str(CFG["AE_PAGE"]),
+        str(CFG["ARC_PAGE"]),
+        str(CFG["ARCA_PAGE"]),
+        str(CFG["OPEN_CASES_PAGE"]),
     ]
     
     # Add evidence pages for open cases
@@ -984,7 +979,7 @@ def run_once(site: mwclient.Site) -> None:
         LOG.info("Updated target page.")
 
         # now update the data‐template page
-        data_title = str(CFG["data_page"])
+        data_title = str(CFG["DATA_PAGE"])
         data_page = site.pages[data_title]
         if new_data != data_page.text():
             data_page.save(new_data,
@@ -995,7 +990,7 @@ def run_once(site: mwclient.Site) -> None:
             LOG.info("Updated data template page.")
 
         # now update the extended page
-        extended_title = str(CFG["extended_page"])
+        extended_title = str(CFG["EXTENDED_PAGE"])
         extended_page = site.pages[extended_title]
         if new_extended != extended_page.text():
             extended_page.save(new_extended,
@@ -1017,14 +1012,16 @@ def main(loop: bool, debug: bool) -> None:
     site = connect()
     if not loop:
         run_once(site)
+        _flush_render_cache()
     else:
-        interval = int(CFG["run_interval"])
+        interval = int(CFG["RUN_INTERVAL"])
         while True:
             try:
                 run_once(site)
             except Exception:
                 LOG.exception("Error; sleeping before retry")
             time.sleep(interval)
+            _flush_render_cache()
 
 def _parse_ts(ts) -> datetime:
     """
