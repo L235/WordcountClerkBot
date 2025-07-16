@@ -9,7 +9,6 @@ __pycache__/
 # Sensitive files
 cookies/
 cookies.txt
-settings.json
 
 # IDE settings
 .vscode/
