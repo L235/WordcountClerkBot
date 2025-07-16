@@ -17,4 +17,12 @@ cookies.txt
 # Environment
 .env
 venv/
-env/ 
+env/
+
+# Pywikibot and bot-specific files
+*.lwp
+apicache/
+*.pkl
+*.ctrl
+user-config.py
+user-password.py 
