@@ -26,7 +26,6 @@ EOF
 
 # Write user-password.py
 cat >"$PYWIKIBOT_DIR/user-password.py" <<EOF
-from pywikibot.login import BotPassword
 ('$USERNAME', BotPassword('$SUFFIX', '$BOT_PASSWORD'))
 EOF
 
