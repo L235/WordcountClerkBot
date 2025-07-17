@@ -344,7 +344,7 @@ def _api_render(site: APISite, wikitext: str) -> str:
         "contentmodel": "wikitext",
     }
     req = pwb_api.Request(site=site, parameters=params)
-    LOG.debug("Making render API call for wikitext (length: %d)", len(wikitext))
+    LOG.info("Making render API call for wikitext (length: %d)", len(wikitext))
     try:
         data = req.submit()
     except Exception as e:
