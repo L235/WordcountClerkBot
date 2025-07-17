@@ -295,29 +295,112 @@ class RequestTable:
 
 @lru_cache(maxsize=1024)
 def _api_render_cached(site_url: str, api_path: str, wikitext: str) -> str:
-    """Cache the raw API response - site must be passed separately."""
-    # This function now only caches the API call, doesn't handle the site connection
-    pass  # Implementation moved to _api_render
+    """
+    Lightweight in‑process HTML render cache.
+    site_url/api_path are part of the key so that renders from multiple wikis
+    do not collide.  This function **does not** persist to disk; we only keep
+    rendered HTML in memory during a given run to minimize API hits while
+    avoiding writing huge HTML blobs to the on‑disk cache.
+    """
+    # Import is local to avoid circulars at module import time.
+    # We must construct a pywikibot.Site object from the URL parts because
+    # callers provide them pre‑split.
+    # NOTE: This helper is only used internally by _api_render(); callers
+    # should not use it directly.
+    raise RuntimeError("_api_render_cached() should never be called directly.")
 
 def _api_render(site: APISite, wikitext: str) -> str:
     """
-    Call parse API once per unique wikitext using provided site, with a
-    small on‑disk cache in CFG['STATE_DIR'] so we don't reparse unchanged
-    snippets across runs.
+    Render a wikitext snippet to HTML via the MediaWiki parse API.
+
+    Previously we persisted the *entire* HTML to disk.  That turned the cache
+    pickle into a ballooning multi‑MB file and slowed load/save.  We now keep
+    only a **process‑local LRU** of the HTML (cheap) and persist *counts* (see
+    _count_rendered_visible) to disk instead.
     """
-    # ---- lazy disk‑cache bootstrap ----------------------------------------
-    if not hasattr(_api_render, "_disk_cache"):
-        state_dir = os.path.expanduser(str(CFG["STATE_DIR"]))
-        os.makedirs(state_dir, exist_ok=True)
-        _api_render._disk_cache_path = os.path.join(state_dir, "render_cache.pkl")
-        try:
-            with open(_api_render._disk_cache_path, "rb") as fh:
-                _api_render._disk_cache = pickle.load(fh)
-        except Exception:
-            _api_render._disk_cache = {}
-    # -----------------------------------------------------------------------
-    # Use a short hash key to avoid giant pickles/filenames.
-    # pywikibot exposes hostname()/apipath(); fall back gracefully.
+    try:
+        host = site.hostname()
+        path = site.apipath()
+    except Exception:
+        host = str(site)
+        path = ""
+
+    # Use the lru_cache defined above by calling its wrapped function with
+    # explicit key args.  We jump through a small wrapper to avoid recursion
+    # into this function (see RuntimeError above).
+    key = (host, path, wikitext)
+    cache = getattr(_api_render, "_mem_cache", None)
+    if cache is None:
+        _api_render._mem_cache = {}
+        cache = _api_render._mem_cache
+
+    if key in cache:
+        return cache[key]
+
+    params = {
+        "action": "parse",
+        "text": wikitext,
+        "prop": "text",
+        "contentmodel": "wikitext",
+    }
+    req = pwb_api.Request(site=site, parameters=params)
+    try:
+        data = req.submit()
+    except Exception as e:
+        LOG.warning("parse API failed: %s", e)
+        html = wikitext  # fallback
+    else:
+        html = data.get("parse", {}).get("text", {}).get("*", "") or wikitext
+
+    # tiny in‑mem LRU (cap 256 because HTML can be large)
+    cache[key] = html
+    if len(cache) > 256:
+        # drop ~64 oldest
+        for k in list(cache.keys())[:64]:
+            del cache[k]
+    return html
+
+def _flush_render_cache() -> None:
+    """Force a cache write; safe to call at shutdown."""
+    # legacy no‑op (HTML no longer persisted); retained for backward compat.
+    return
+
+
+# ---------------------------------------------------------------------------
+# Wordcount cache storing *only* (visible, rendered) tuple per snippet
+# ---------------------------------------------------------------------------
+def _load_wordcount_cache() -> None:
+    if hasattr(_load_wordcount_cache, "_loaded"):
+        return
+    state_dir = os.path.expanduser(str(CFG["STATE_DIR"]))
+    os.makedirs(state_dir, exist_ok=True)
+    _load_wordcount_cache._path = os.path.join(state_dir, "wordcount_cache.pkl")
+    try:
+        with open(_load_wordcount_cache._path, "rb") as fh:
+            _load_wordcount_cache._cache = pickle.load(fh)
+    except Exception:
+        _load_wordcount_cache._cache = {}
+    _load_wordcount_cache._writes = 0
+    _load_wordcount_cache._loaded = True
+
+
+def _flush_wordcount_cache() -> None:
+    """Persist wordcount cache immediately."""
+    if not hasattr(_load_wordcount_cache, "_loaded"):
+        return
+    try:
+        with open(_load_wordcount_cache._path, "wb") as fh:
+            pickle.dump(_load_wordcount_cache._cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception as e:
+        LOG.debug("Could not write wordcount cache: %s", e)
+
+
+def _count_rendered_visible(site: APISite, wikitext: str) -> Tuple[int, int]:
+    """
+    Return (visible_words, rendered_words) for the given snippet, using a
+    persistent on‑disk cache keyed by site+apipath+wikitext SHA‑1 hash.
+    """
+    _load_wordcount_cache()
     try:
         host = site.hostname()
         path = site.apipath()
@@ -326,112 +409,59 @@ def _api_render(site: APISite, wikitext: str) -> str:
         path = ""
     raw_key = f"{host}|{path}|{wikitext}".encode("utf-8")
     cache_key = hashlib.sha1(raw_key).hexdigest()
-    if cache_key in _api_render._disk_cache:
-        return _api_render._disk_cache[cache_key]
 
-    # Not cached: hit the API via explicit Request.
-    # NOTE: 'text' parameter is unprefixed wikitext (no title); MW will parse it.
-    # Using contentmodel='wikitext' ensures expansion behaves the same way as before.
-    params = {
-        'action': 'parse',
-        'text': wikitext,
-        'prop': 'text',
-        'contentmodel': 'wikitext',
-        # do not set pst or disablelimitreport; defaults fine
-    }
-    req = pwb_api.Request(site=site, parameters=params)
-    try:
-        data = req.submit()
-    except Exception as e:
-        LOG.warning("parse API failed: %s", e)
-        # fall back to raw wikitext (worst case)
-        result = wikitext
-    else:
-        # Expected structure: {'parse': {'text': {'*': '<html>...' } ...}}
-        result = data.get('parse', {}).get('text', {}).get('*', '')
-        if not result:  # defensive
-            result = wikitext
+    wc_cache = _load_wordcount_cache._cache  # type: ignore[attr-defined]
+    if cache_key in wc_cache:
+        return wc_cache[cache_key]
 
-    # Store & prune.
-    _api_render._disk_cache[cache_key] = result
-    # Hard cap ~1000 entries; drop oldest ~100 (insertion‑ordered dict).
-    if len(_api_render._disk_cache) > 1000:
-        for k in list(_api_render._disk_cache.keys())[:100]:
-            del _api_render._disk_cache[k]
-    # Persist to disk occasionally (every 20 new inserts).
-    _api_render._writes = getattr(_api_render, "_writes", 0) + 1
-    if _api_render._writes % 20 == 0:
-        try:
-            with open(_api_render._disk_cache_path, "wb") as fh:
-                pickle.dump(_api_render._disk_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
-        except Exception as e:
-            LOG.debug("Could not write render cache: %s", e)
-    return result
+    # MISS: render HTML, compute both counts once.
+    html = _api_render(site, wikitext)
 
-def _flush_render_cache() -> None:
-    """Force a cache write; safe to call at shutdown."""
-    if hasattr(_api_render, "_disk_cache_path"):
-        try:
-            with open(_api_render._disk_cache_path, "wb") as fh:
-                pickle.dump(_api_render._disk_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
-        except Exception as e:
-            LOG.debug("Could not write render cache: %s", e)
+    # Rendered words (all text, incl. hidden)
+    rendered = len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
+
+    # Visible words (filtered)
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup.select("ol.references, div.references, div.reflist"):
+        tag.decompose()
+    for tag in soup.select('[style*="display:none" i]'):
+        tag.decompose()
+    for tag in soup.select("[hidden], [aria-hidden='true']"):
+        tag.decompose()
+    for tag in soup.select(".mw-collapsed, .mw-collapsible-content"):
+        tag.decompose()
+    for tag in soup.select('[style*="text-decoration:line-through" i], s, strike, del'):
+        tag.decompose()
+    for tag in soup.select("div#siteSub, div#contentSub, div#jump-to-nav"):
+        tag.decompose()
+    for tag in soup.select("span.localcomments"):
+        tag.decompose()
+    text = _TS_RE.sub("", soup.get_text())
+    tokens = [t for t in re.split(r"\s+", text) if t and re.search(r"[A-Za-z0-9]", t)]
+    visible = len(tokens)
+
+    wc_cache[cache_key] = (visible, rendered)
+    # prune (~10k entries max, drop 1k oldest)
+    if len(wc_cache) > 10000:
+        for k in list(wc_cache.keys())[:1000]:
+            del wc_cache[k]
+    _load_wordcount_cache._writes += 1  # type: ignore[attr-defined]
+    if _load_wordcount_cache._writes % 50 == 0:  # amortize disk I/O
+        _flush_wordcount_cache()
+    return visible, rendered
+
 
 def rendered_word_count(site: APISite, wikitext: str) -> int:
-    """Count words in rendered HTML, including hidden content."""
-    html = _api_render(site, wikitext)  # Pass site instead of reconnecting
-    return len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
+    """Count words in rendered HTML, including hidden content (cached)."""
+    _v, r = _count_rendered_visible(site, wikitext)
+    return r
 
 def visible_word_count(site: APISite, wikitext: str) -> int:
     """
-    Approximate the front-end wordcount.js logic for "visible words".
-    * Render the snippet through the MediaWiki API.
-    * Remove anything that the canonical script ignores:
-        – hidden / collapsed / struck-through elements  
-        – page-furniture boxes  
-        – reference-list content (text produced from <ref> tags)  
-        – localcomments spans  
-        – timestamps (hh:mm, d Month yyyy UTC)
+    Approximate the front-end wordcount.js logic for *visible* words (cached).
     """
-    html = _api_render(site, wikitext)  # Pass site instead of reconnecting
-    soup = BeautifulSoup(html, "html.parser")
-
-    # 0 – drop reference lists generated from <ref>…</ref>
-    #     (ol.references / .reflist blocks are *not* part of the prose limit)
-    for tag in soup.select("ol.references, div.references, div.reflist"):
-        tag.decompose()
-
-    # 1 – elements hidden outright
-    for tag in soup.select('[style*="display:none" i]'):
-        tag.decompose()
-
-    # 1a – HTML5/ARIA hidden helpers (also matched by jQuery :hidden)
-    for tag in soup.select("[hidden], [aria-hidden='true']"):
-        tag.decompose()
-
-    # 2 – collapsed content
-    for tag in soup.select('.mw-collapsed, .mw-collapsible-content'):
-        tag.decompose()
-
-    # 3 – struck‑through content
-    for tag in soup.select('[style*="text-decoration:line-through" i], s, strike, del'):
-        tag.decompose()
-
-    # 4 – page furniture
-    for tag in soup.select('div#siteSub, div#contentSub, div#jump-to-nav'):
-        tag.decompose()
-
-    # 4a – inline talk-page comments (ignored by frontend via .ignore())
-    for tag in soup.select("span.localcomments"):
-        tag.decompose()
-
-    # 5 – plain text & cleanup
-    text = _TS_RE.sub("", soup.get_text())
-    tokens = [
-        t for t in re.split(r"\s+", text)
-        if t and re.search(r"[A-Za-z0-9]", t)
-    ]
-    return len(tokens)
+    v, _r = _count_rendered_visible(site, wikitext)
+    return v
 
 ###############################################################################
 # Section scanner (for AE)                                                    #
@@ -983,7 +1013,7 @@ def run_once(site: APISite) -> None:
     # if our report is newer than *all* source pages, nothing to do
     if ts_target > max(ts_sources):
         LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
-        # return
+        return
     # ---- end early-exit check ----
 
     # Collect all data once
@@ -1055,7 +1085,8 @@ def main(loop: bool, debug: bool) -> None:
     site = connect()
     if not loop:
         run_once(site)
-        _flush_render_cache()
+        _flush_render_cache()      # legacy; harmless
+        _flush_wordcount_cache()   # persist new counts
     else:
         interval = int(CFG["RUN_INTERVAL"])
         while True:
@@ -1064,7 +1095,8 @@ def main(loop: bool, debug: bool) -> None:
             except Exception:
                 LOG.exception("Error; sleeping before retry")
             time.sleep(interval)
-            _flush_render_cache()
+            _flush_render_cache()    # legacy
+            _flush_wordcount_cache() # persist new counts
 
 def _parse_ts(ts) -> datetime:
     """
