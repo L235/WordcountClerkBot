@@ -19,6 +19,9 @@ cookies.txt
 venv/
 env/
 
+# Mac
+.DS_Store
+
 # Pywikibot and bot-specific files
 *.lwp
 apicache/
