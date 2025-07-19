@@ -290,22 +290,6 @@ class RequestTable:
 # Word-count helpers
 ###############################################################################
 
-@lru_cache(maxsize=1024)
-def _api_render_cached(site_url: str, api_path: str, wikitext: str) -> str:
-    """
-    Lightweight in‑process HTML render cache.
-    site_url/api_path are part of the key so that renders from multiple wikis
-    do not collide.  This function **does not** persist to disk; we only keep
-    rendered HTML in memory during a given run to minimize API hits while
-    avoiding writing huge HTML blobs to the on‑disk cache.
-    """
-    # Import is local to avoid circulars at module import time.
-    # We must construct a pywikibot.Site object from the URL parts because
-    # callers provide them pre-split.
-    # This helper is only used internally by _api_render()
-    # should not use it directly.
-    raise RuntimeError("_api_render_cached() should never be called directly.")
-
 def _api_render(site: APISite, wikitext: str) -> str:
     """
     Render a wikitext snippet to HTML via the MediaWiki parse API.
@@ -357,11 +341,6 @@ def _api_render(site: APISite, wikitext: str) -> str:
         for k in list(cache.keys())[:64]:
             del cache[k]
     return html
-
-def _flush_render_cache() -> None:
-    """Force a cache write; safe to call at shutdown."""
-    # Legacy no-op (HTML no longer persisted); retained for backward compatibility
-    return
 
 
 # ---------------------------------------------------------------------------
@@ -1083,7 +1062,6 @@ def main(loop: bool, debug: bool) -> None:
     site = connect()
     if not loop:
         run_once(site)
-        _flush_render_cache()      # legacy; harmless
         _flush_wordcount_cache()   # Persist new counts
     else:
         interval = int(CFG["RUN_INTERVAL"])
@@ -1093,24 +1071,7 @@ def main(loop: bool, debug: bool) -> None:
             except Exception:
                 LOG.exception("Error; sleeping before retry")
             time.sleep(interval)
-            _flush_render_cache()    # legacy
             _flush_wordcount_cache() # Persist new counts
-
-def _parse_ts(ts) -> datetime:
-    """
-    Parse a timestamp from mwclient.revisions():
-    - if it's a struct_time, pull the tm_* fields
-    - if it's an ISO string ("YYYY-MM-DDTHH:MM:SSZ"), parse it
-    """
-    if isinstance(ts, time.struct_time):
-        # struct_time is already in UTC
-        return datetime(
-            ts.tm_year, ts.tm_mon, ts.tm_mday,
-            ts.tm_hour, ts.tm_min, ts.tm_sec,
-            tzinfo=timezone.utc
-        )
-    # otherwise assume string like "2025-05-20T18:34:56Z"
-    return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 ###############################################################################
 # CLI entry-point
