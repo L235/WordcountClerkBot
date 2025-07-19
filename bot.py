@@ -63,9 +63,9 @@ DEFAULT_CFG = {
     "AE_PAGE": "Wikipedia:Arbitration/Requests/Enforcement",
     "ARC_PAGE": "Wikipedia:Arbitration/Requests/Case",
     "OPEN_CASES_PAGE": "Template:ArbComOpenTasks/Cases",
-    "TARGET_PAGE": "User:WordcountClerkBot/word counts",
-    "DATA_PAGE": "User:WordcountClerkBot/word counts/data",
-    "EXTENDED_PAGE": "User:WordcountClerkBot/word counts/extended",
+    "TARGET_PAGE": "User:ClerkBot/word counts",
+    "DATA_PAGE": "User:ClerkBot/word counts/data",
+    "EXTENDED_PAGE": "User:ClerkBot/word counts/extended",
     "DEFAULT_LIMIT": 500,
     "EVIDENCE_LIMIT_NAMED": 1000,
     "EVIDENCE_LIMIT_OTHER": 500,
@@ -76,6 +76,7 @@ DEFAULT_CFG = {
     "HEADER_TEXT": "",
     "PLACEHOLDER_HEADING": "statement by {other-editor}",
     "STATE_DIR": ".",
+    "EDIT_SUMMARY_SUFFIX": "([[User:ClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])",
 }
 
 # Global configuration dictionary
@@ -1046,7 +1047,7 @@ def run_once(site: APISite) -> None:
         summary = (
             f"updating table ({x} statements over, {y} statements within 10%, "
             f"{z} total statements, {a} pending requests) "
-            f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"
+            f"{CFG['EDIT_SUMMARY_SUFFIX']}"
         )
         target.text = new_text
         target.save(summary=summary, minor=False, botflag=False)
@@ -1059,7 +1060,7 @@ def run_once(site: APISite) -> None:
         if new_data != current_data:
             data_page.text = new_data
             data_page.save(summary=(f"Updating data template ({a} open requests, {z} statements) "
-                                    f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
+                                    f"{CFG['EDIT_SUMMARY_SUFFIX']}"),
                            minor=True, botflag=False)
             LOG.info("Updated data template page.")
 
@@ -1070,7 +1071,7 @@ def run_once(site: APISite) -> None:
         if new_extended != current_extended:
             extended_page.text = new_extended
             extended_page.save(summary=(f"Updating extended report ({a} open requests, {z} statements) "
-                                        f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
+                                        f"{CFG['EDIT_SUMMARY_SUFFIX']}"),
                                minor=True, botflag=False)
             LOG.info("Updated extended report page.")
     else:
