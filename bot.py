@@ -678,7 +678,7 @@ class EvidenceParser(BaseParser):
                 )
 
                 # Include everything between the level-2 heading
-# and the next level-2 (or end of file). This ensures that prose
+                # and the next level-2 (or end of file). This ensures that prose
                 # between the heading and the first === subsection is counted.
                 body = text[sec.start:next2_start]
                 
