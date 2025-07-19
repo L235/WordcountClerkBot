@@ -34,19 +34,15 @@ from typing import ClassVar, List, Dict, Tuple, Type
 from datetime import datetime, timezone
 import pickle
 import hashlib
-import http.cookiejar
 
 # ---------------------------------------------------------------------------
-# Third‑party dependencies
+# Third-party dependencies
 # ---------------------------------------------------------------------------
-# Replaced mwclient with pywikibot.
 import pywikibot
-# Request helper for raw API calls
 from pywikibot.data import api as pwb_api
-# from pywikibot import pagegenerators  # no longer needed
 from pywikibot.site import APISite
 import mwparserfromhell as mwpfh
-from bs4 import BeautifulSoup  # NEW – precise HTML filtering
+from bs4 import BeautifulSoup
 
 ###############################################################################
 # Configuration                                                               #
@@ -86,7 +82,7 @@ CFG: Dict[str, object] = {}
 # Logging                                                                     #
 ###############################################################################
 
-# ─── 1) CUSTOM LOGGING SETUP (INFO→stdout, WARNING+→stderr) ───────────────────
+# Custom logging setup (INFO->stdout, WARNING+->stderr)
 class MaxLevelFilter(logging.Filter):
     """Allow through only records <= a given level."""
     def __init__(self, level: int):
@@ -99,12 +95,12 @@ class MaxLevelFilter(logging.Filter):
 LOG = logging.getLogger(__name__)
 LOG.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 
-# Handler for INFO and DEBUG → stdout
+# Handler for INFO and DEBUG -> stdout
 h_info = logging.StreamHandler(sys.stdout)
 h_info.setLevel(logging.DEBUG)
 h_info.addFilter(MaxLevelFilter(logging.INFO))
 
-# Handler for WARNING and above → stderr
+# Handler for WARNING and above -> stderr
 h_err = logging.StreamHandler(sys.stderr)
 h_err.setLevel(logging.WARNING)
 
@@ -272,7 +268,7 @@ class RequestTable:
             style = f" style=\"background:{s.colour}\"" if s.colour else ""
             template = f"{{{{ACWordStatus|page={label}|section={self.title}|user={s.user}}}}}"
 
-            # yellow‑highlight the cell only when the template is **missing**
+            # Highlight the cell only when the template is missing
             if s.has_status_template:
                 template_cell = f"|| <nowiki>{template}</nowiki>"
             else:
@@ -291,7 +287,7 @@ class RequestTable:
         return heading_line + "\n" + self.EXTENDED_HEADER + "\n".join(rows) + "\n|}"
 
 ###############################################################################
-# Word‑count helpers                                                          #
+# Word-count helpers
 ###############################################################################
 
 @lru_cache(maxsize=1024)
@@ -305,8 +301,8 @@ def _api_render_cached(site_url: str, api_path: str, wikitext: str) -> str:
     """
     # Import is local to avoid circulars at module import time.
     # We must construct a pywikibot.Site object from the URL parts because
-    # callers provide them pre‑split.
-    # NOTE: This helper is only used internally by _api_render(); callers
+    # callers provide them pre-split.
+    # This helper is only used internally by _api_render()
     # should not use it directly.
     raise RuntimeError("_api_render_cached() should never be called directly.")
 
@@ -328,7 +324,7 @@ def _api_render(site: APISite, wikitext: str) -> str:
 
     # Use the lru_cache defined above by calling its wrapped function with
     # explicit key args.  We jump through a small wrapper to avoid recursion
-    # into this function (see RuntimeError above).
+    # into this function (see RuntimeError above)
     key = (host, path, wikitext)
     cache = getattr(_api_render, "_mem_cache", None)
     if cache is None:
@@ -354,7 +350,7 @@ def _api_render(site: APISite, wikitext: str) -> str:
     else:
         html = data.get("parse", {}).get("text", {}).get("*", "") or wikitext
 
-    # tiny in‑mem LRU (cap 256 because HTML can be large)
+    # In-memory LRU cache (cap 256 because HTML can be large)
     cache[key] = html
     if len(cache) > 256:
         # drop ~64 oldest
@@ -364,12 +360,12 @@ def _api_render(site: APISite, wikitext: str) -> str:
 
 def _flush_render_cache() -> None:
     """Force a cache write; safe to call at shutdown."""
-    # legacy no‑op (HTML no longer persisted); retained for backward compat.
+    # Legacy no-op (HTML no longer persisted); retained for backward compatibility
     return
 
 
 # ---------------------------------------------------------------------------
-# Wordcount cache storing *only* (visible, rendered) tuple per snippet
+# Word count cache storing only (visible, rendered) tuple per snippet
 # ---------------------------------------------------------------------------
 def _load_wordcount_cache() -> None:
     if hasattr(_load_wordcount_cache, "_loaded"):
@@ -416,13 +412,13 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> Tuple[int, int]:
     if cache_key in wc_cache:
         return wc_cache[cache_key]
 
-    # MISS: render HTML, compute both counts once.
+    # Cache miss: render HTML, compute both counts once
     html = _api_render(site, wikitext)
 
-    # Rendered words (all text, incl. hidden)
+    # Rendered words (all text, including hidden)
     rendered = len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
 
-    # Visible words (filtered)
+    # Visible words (filtered HTML)
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.select("ol.references, div.references, div.reflist"):
         tag.decompose()
@@ -443,9 +439,9 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> Tuple[int, int]:
     visible = len(tokens)
 
     wc_cache[cache_key] = (visible, rendered)
-    # prune (~10k entries max, drop 1k oldest)
-    if len(wc_cache) > 10000:
-        for k in list(wc_cache.keys())[:1000]:
+    # Prune cache (~100k entries max, drop 10k oldest)
+    if len(wc_cache) > 100000:
+        for k in list(wc_cache.keys())[:10000]:
             del wc_cache[k]
     _load_wordcount_cache._writes += 1  # type: ignore[attr-defined]
     if _load_wordcount_cache._writes % 50 == 0:  # amortize disk I/O
@@ -466,7 +462,7 @@ def visible_word_count(site: APISite, wikitext: str) -> int:
     return v
 
 ###############################################################################
-# Section scanner (for AE)                                                    #
+# Section scanner (for AE)
 ###############################################################################
 
 @dataclass
@@ -525,11 +521,11 @@ def extract_involved_parties(site: APISite, case_name: str) -> List[str]:
     parties = []
     sections = scan_sections(page_text)
     
-    # Find "Involved parties" section (level 3)
+    # Find "Involved parties" section (level 3 headers)
     for sec in sections:
         if sec.level == 3 and sec.title.lower() == "involved parties":
             body = sec.body(page_text)
-            # Look for {{admin|...}} and {{userlinks|...}} templates
+            # Look for {{admin|...}} and {{userlinks|...}} templates in the section
             for match in re.finditer(r'\{\{\s*(?:admin|userlinks)\s*\|\s*(?:1\s*=\s*)?([^|}]+)', body, re.I):
                 username = match.group(1).strip()
                 if username:
@@ -561,7 +557,7 @@ class BaseParser:
         self, raw_user: str, body: str, anchor: str, limit: int | None = None
     ) -> Statement:
         limit_val = self._extract_limit(body, limit)
-        # detect ACWordStatus before we strip all templates
+        # Check for ACWordStatus before stripping all templates
         has_acwordstatus = bool(ACWORDSTATUS_RE.search(body))
         body_no_templates = TEMPLATE_RE.sub("", body)
         visible = visible_word_count(self.site, body_no_templates)
@@ -617,12 +613,12 @@ class AEParser(BaseParser):
         for i, sec in enumerate(sections):
             # When we hit a level-2 header, start a new RequestTable
             if sec.level == 2:
-                # find the start of the *next* level-2 section (or EOF)
+                # Find the start of the next level-2 section (or end of file)
                 next2_start = next(
                     (s.start for s in sections[i+1:] if s.level == 2),
                     len(text)
                 )
-                # grab everything from just after this header to just before the next lvl-2
+                # Get everything from just after this header to just before the next level-2
                 body_full = text[sec.start:next2_start]
 
                 closed = bool(HAT_OPEN_RE.match(body_full.lstrip()))
@@ -631,11 +627,11 @@ class AEParser(BaseParser):
                 tables.append(current)
                 continue
 
-            # everything below here belongs to the most recent level-2
+            # Everything below here belongs to the most recent level-2
             if current is None:
                 continue
 
-            # collect statements in level-3 and level-4 subsections
+            # Collect statements in level-3 and level-4 subsections
             if sec.level in {3, 4} and self._STMT.match(sec.title):
                 body = sec.body(text)
                 raw_user = self._STMT.sub("", sec.title)
@@ -643,7 +639,7 @@ class AEParser(BaseParser):
                     self._make_statement(raw_user, body, slugify(sec.title))
                 )
 
-            # special "Request concerning" blocks at level-3
+            # Handle "Request concerning" blocks at level-3
             elif sec.level == 3 and sec.title.lower().startswith("request concerning"):
                 body = self._collect_request_body(sec, text)
                 if body:
@@ -696,14 +692,14 @@ class EvidenceParser(BaseParser):
                 if raw_user.lower() == "{your user name}":
                     continue
                 
-                # Find the start of the next level‑2 section (or EOF)
+                # Find the start of the next level-2 section (or end of file)
                 next2_start = next(
                     (s.start for s in sections[i+1:] if s.level == 2),
                     len(text)
                 )
 
-                # ── NEW: include *everything* between the level‑2 heading
-                # and the next level‑2 (or EOF).  This ensures that prose
+                # Include everything between the level-2 heading
+# and the next level-2 (or end of file). This ensures that prose
                 # between the heading and the first === subsection is counted.
                 body = text[sec.start:next2_start]
                 
@@ -769,7 +765,7 @@ def connect() -> APISite:
     the manual cookiejar/session plumbing formerly used with mwclient.
     """
     host = str(CFG["SITE"]).lower()
-    # crude parse: "<code>.wikipedia.org" → ("en", "wikipedia")
+    # Parse hostname: "<code>.wikipedia.org" -> ("en", "wikipedia")
     if host.endswith(".org"):
         parts = host.split(".")
         code = parts[0]
@@ -784,7 +780,7 @@ def connect() -> APISite:
     bot_user = str(CFG["BOT_USER"])
     bot_pass = str(CFG["BOT_PASSWORD"])
     if bot_user and bot_pass:
-        # BotPassword usernames are "MainAccount@AppName" → pywikibot.LoginManager
+        # BotPassword usernames are "MainAccount@AppName" -> pywikibot.LoginManager
         try:
             from pywikibot.login import LoginManager
             lm = LoginManager(password=bot_pass, site=site, user=bot_user)
@@ -793,7 +789,7 @@ def connect() -> APISite:
         except Exception as e:
             LOG.warning("BotPassword login failed (%s); continuing with default credentials.", e)
 
-    # set custom UA if provided (pywikibot reads from global config)
+    # Set custom user agent if provided (pywikibot reads from global config)
     if CFG.get("USER_AGENT"):
         try:
             import pywikibot.config as pwb_config
@@ -817,7 +813,7 @@ def collect_all_data(site: APISite) -> ParsedData:
     """Collect and parse all board and evidence page data once."""
     boards = {}
     evidence = {}
-    # NB: signature type changed to APISite in earlier patch; retained comment here.
+    # Note: signature type changed to APISite in earlier patch
     
     # Process regular boards (ARCA, AE, ARC)
     for label, (page, ParserCls) in get_board_parsers().items():
@@ -977,7 +973,7 @@ def run_once(site: APISite) -> None:
     # ---- early-exit check ----
     target_title = str(CFG["TARGET_PAGE"])
     target = pywikibot.Page(site, target_title)
-    # get the latest revision of the target page (if it exists)
+    # Get the latest revision of the target page (if it exists)
     if target.exists():
         try:
             ts_target = target.latest_revision.timestamp
@@ -986,7 +982,7 @@ def run_once(site: APISite) -> None:
     else:
         ts_target = datetime.min.replace(tzinfo=timezone.utc)
 
-    # fetch the last edit time of each source page
+    # Fetch the last edit time of each source page
     source_titles = [
         str(CFG["AE_PAGE"]),
         str(CFG["ARC_PAGE"]),
@@ -1012,7 +1008,7 @@ def run_once(site: APISite) -> None:
         else:
             ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
 
-    # if our report is newer than *all* source pages, nothing to do
+    # If our report is newer than all source pages, nothing to do
     if ts_target > max(ts_sources):
         LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
         return
@@ -1026,10 +1022,10 @@ def run_once(site: APISite) -> None:
     new_data = assemble_data_template_from_data(data)
     new_extended = assemble_extended_report_from_data(data)
     
-    # fetch current target wikitext
+    # Fetch current target wikitext
     current_text = target.text if target.exists() else ""
     if new_text != current_text:
-        # compute stats for the edit summary using the shared data
+        # Compute stats for the edit summary using the shared data
         all_tables: List[RequestTable] = []
         for tables in data.boards.values():
             all_tables.extend(tables)
@@ -1053,7 +1049,7 @@ def run_once(site: APISite) -> None:
         target.save(summary=summary, minor=False, botflag=False)
         LOG.info("Updated target page.")
 
-        # now update the data‐template page
+        # Now update the data template page
         data_title = str(CFG["DATA_PAGE"])
         data_page = pywikibot.Page(site, data_title)
         current_data = data_page.text if data_page.exists() else ""
@@ -1064,7 +1060,7 @@ def run_once(site: APISite) -> None:
                            minor=True, botflag=False)
             LOG.info("Updated data template page.")
 
-        # now update the extended page
+        # Now update the extended page
         extended_title = str(CFG["EXTENDED_PAGE"])
         extended_page = pywikibot.Page(site, extended_title)
         current_extended = extended_page.text if extended_page.exists() else ""
@@ -1088,7 +1084,7 @@ def main(loop: bool, debug: bool) -> None:
     if not loop:
         run_once(site)
         _flush_render_cache()      # legacy; harmless
-        _flush_wordcount_cache()   # persist new counts
+        _flush_wordcount_cache()   # Persist new counts
     else:
         interval = int(CFG["RUN_INTERVAL"])
         while True:
@@ -1098,7 +1094,7 @@ def main(loop: bool, debug: bool) -> None:
                 LOG.exception("Error; sleeping before retry")
             time.sleep(interval)
             _flush_render_cache()    # legacy
-            _flush_wordcount_cache() # persist new counts
+            _flush_wordcount_cache() # Persist new counts
 
 def _parse_ts(ts) -> datetime:
     """
@@ -1117,7 +1113,7 @@ def _parse_ts(ts) -> datetime:
     return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 ###############################################################################
-# CLI entry‑point                                                             #
+# CLI entry-point
 ###############################################################################
 
 if __name__ == "__main__":
