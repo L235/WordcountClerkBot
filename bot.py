@@ -1058,7 +1058,7 @@ def run_once(site: APISite) -> None:
         current_data = data_page.text if data_page.exists() else ""
         if new_data != current_data:
             data_page.text = new_data
-            data_page.save(summary=(f"Updating data template ({a} open requests, {z} statements)"
+            data_page.save(summary=(f"Updating data template ({a} open requests, {z} statements) "
                                     f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
                            minor=True, botflag=False)
             LOG.info("Updated data template page.")
@@ -1069,7 +1069,7 @@ def run_once(site: APISite) -> None:
         current_extended = extended_page.text if extended_page.exists() else ""
         if new_extended != current_extended:
             extended_page.text = new_extended
-            extended_page.save(summary=(f"Updating extended report ({a} open requests, {z} statements)"
+            extended_page.save(summary=(f"Updating extended report ({a} open requests, {z} statements) "
                                         f"([[User:KevinClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"),
                                minor=True, botflag=False)
             LOG.info("Updated extended report page.")
