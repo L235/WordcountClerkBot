@@ -158,11 +158,30 @@ def fuzzy_username(header: str, body: str) -> str:
         body: Full wikitext of the section
         
     Returns:
-        Best matching username, preferring exact matches from links
+        Best matching username, preferring:
+          1) An explicit {{ACWordStatus}} / {{Arbitration Committee word status}} |user=... override, if present
+          2) Exact matches from links in the body
+          3) Best fuzzy match to header among body links
     """
     def capitalize_first(s: str) -> str:
         return s[0].upper() + s[1:] if s else s
-    
+
+    # --- Template override (top priority) ---
+    # Accept {{ACWordStatus|...|user=...}} or {{Arbitration Committee word status|...|user=...}}
+    try:
+        code = mwpfh.parse(body)
+        def _norm(name: str) -> str:
+            return re.sub(r"\s+", " ", name.replace("_", " ")).strip().lower()
+        for tmpl in code.filter_templates():
+            tname = _norm(str(tmpl.name))
+            if tname in {"acwordstatus", "arbitration committee word status"} and tmpl.has("user"):
+                raw = str(tmpl.get("user").value).strip()
+                if raw:
+                    return capitalize_first(raw)
+    except Exception:
+        pass
+
+    # ---- Existing heuristics (header + body links) ----
     simple = capitalize_first(strip_parenthetical(header, body))
     cands = [capitalize_first(c) for c in user_links(body)]
     if not cands:
