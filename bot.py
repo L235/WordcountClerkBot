@@ -1055,7 +1055,7 @@ def run_once(site: APISite) -> None:
             data_page.text = new_data
             data_page.save(summary=(f"Updating data template ({a} open requests, {z} statements) "
                                     f"{CFG['EDIT_SUMMARY_SUFFIX']}"),
-                           minor=True, botflag=False)
+                           minor=False, botflag=False)
             LOG.info("Updated data template page.")
 
         # Now update the extended page
@@ -1066,7 +1066,7 @@ def run_once(site: APISite) -> None:
             extended_page.text = new_extended
             extended_page.save(summary=(f"Updating extended report ({a} open requests, {z} statements) "
                                         f"{CFG['EDIT_SUMMARY_SUFFIX']}"),
-                               minor=True, botflag=False)
+                               minor=False, botflag=False)
             LOG.info("Updated extended report page.")
     else:
         LOG.info("No changes detected.")
