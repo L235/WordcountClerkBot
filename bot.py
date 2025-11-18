@@ -126,7 +126,7 @@ _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
 
 def slugify(s: str) -> str:
     """Convert a heading into a MediaWiki anchor (no spaces, punctuation stripped)."""
-    text = mwpfh.parse(s).strip_code()
+    text = mwpfh.parse(s, skip_style_tags=True).strip_code()
     return re.sub(r"\s+", "_", text).strip("_")
 
 def strip_parenthetical(username: str, body: str) -> str:
@@ -142,7 +142,7 @@ def strip_parenthetical(username: str, body: str) -> str:
 def user_links(body: str) -> List[str]:
     """Extract usernames from User: and User talk: links in wikitext."""
     links: List[str] = []
-    for wl in mwpfh.parse(body).filter_wikilinks():
+    for wl in mwpfh.parse(body, skip_style_tags=True).filter_wikilinks():
         title = str(wl.title)
         ns, _, rest = title.partition(":")
         if ns.lower() in {"user", "user talk"} and rest:
@@ -496,7 +496,7 @@ def extract_open_cases(site: APISite) -> List[str]:
     case_names = []
     
     # Parse the wikitext to find ArbComOpenTasks/line templates
-    code = mwpfh.parse(page_text)
+    code = mwpfh.parse(page_text, skip_style_tags=True)
     for template in code.filter_templates():
         template_name = str(template.name).strip()
         if template_name == "ArbComOpenTasks/line":
@@ -575,17 +575,17 @@ class BaseParser:
 
 class SimpleBoardParser(BaseParser):
     def parse(self, text: str) -> List[RequestTable]:
-        code = mwpfh.parse(text)
+        code = mwpfh.parse(text, skip_style_tags=True)
         tables: List[RequestTable] = []
         for lvl2 in code.get_sections(levels=[2]):
-            sec_title = mwpfh.parse(lvl2.filter_headings()[0].title).strip_code().strip()
+            sec_title = mwpfh.parse(lvl2.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
             anchor = slugify(sec_title)
             sec_wikitext = str(lvl2)
             closed = bool(HAT_OPEN_RE.match(sec_wikitext.lstrip()))
 
             statements: List[Statement] = []
             for st in lvl2.get_sections(levels=[3]):
-                heading = mwpfh.parse(st.filter_headings()[0].title).strip_code().strip()
+                heading = mwpfh.parse(st.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
                 if heading.lower() == CFG["PLACEHOLDER_HEADING"]:
                     continue
                 if not heading.lower().startswith("statement by"):
