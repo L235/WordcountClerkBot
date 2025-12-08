@@ -81,7 +81,17 @@ class BotConfig:
 
     @classmethod
     def from_env(cls) -> BotConfig:
-        """Load configuration from environment variables."""
+        """Load configuration from environment variables.
+
+        For each environment variable, if it exists and can be converted to the
+        expected type, it will override the default value. If conversion fails
+        (e.g., DEFAULT_LIMIT="abc"), a warning is logged and the default value
+        is used instead. This allows the bot to continue running with sensible
+        defaults even if some configuration values are invalid.
+
+        Returns:
+            BotConfig: Configuration instance with values from environment or defaults.
+        """
         # Mapping from env var name to field name and type
         # (env_var, field_name, type_converter)
         env_map = {
@@ -172,14 +182,23 @@ def setup_logging(debug: bool = False) -> None:
 ###############################################################################
 
 class WordCountCache:
-    """Manages persistent caching of word counts for rendered wikitext."""
-    
+    """Manages persistent caching of word counts for rendered wikitext.
+
+    The cache has two levels:
+    1. Persistent disk cache for (visible_words, rendered_words) tuples
+    2. In-memory cache for rendered HTML (not persisted to disk)
+
+    Cache pruning uses FIFO insertion-order, not LRU. When the cache exceeds
+    100k entries, the oldest 10k by insertion time are removed. Note that
+    updating an existing key does not change its position in the insertion order.
+    """
+
     def __init__(self, state_dir: str):
         self.path = os.path.join(os.path.expanduser(state_dir), "wordcount_cache.pkl")
         self._cache: dict[str, tuple[int, int]] = {}
         self._writes = 0
         self._loaded = False
-        self._mem_cache_api: dict[tuple[str, str, str], str] = {} # Helper for API render
+        self._mem_cache_html: dict[tuple[str, str, str], str] = {}  # In-memory HTML cache
 
     def load(self) -> None:
         """Load the cache from disk."""
@@ -211,15 +230,27 @@ class WordCountCache:
 
     def put(self, key: str, value: tuple[int, int]) -> None:
         self._cache[key] = value
-        
-        # Prune cache (~100k entries max, drop 10k oldest)
+
+        # Prune cache (~100k entries max, drop 10k oldest by insertion order)
         if len(self._cache) > 100000:
             for k in list(self._cache.keys())[:10000]:
                 del self._cache[k]
-        
+
         self._writes += 1
         if self._writes % 50 == 0:  # amortize disk I/O
             self.flush()
+
+    def get_rendered_html(self, key: tuple[str, str, str]) -> str | None:
+        """Get rendered HTML from in-memory cache."""
+        return self._mem_cache_html.get(key)
+
+    def cache_rendered_html(self, key: tuple[str, str, str], html: str) -> None:
+        """Cache rendered HTML in memory with FIFO pruning at 256 entries."""
+        self._mem_cache_html[key] = html
+        if len(self._mem_cache_html) > 256:
+            # Drop oldest 64 by insertion order
+            for k in list(self._mem_cache_html.keys())[:64]:
+                del self._mem_cache_html[k]
 
 # Global cache instance
 CACHE: WordCountCache | None = None
@@ -420,7 +451,7 @@ class RequestTable:
 def _api_render(site: APISite, wikitext: str) -> str:
     """
     Render a wikitext snippet to HTML via the MediaWiki parse API.
-    Uses process-local LRU cache.
+    Uses in-memory cache for rendered HTML.
     """
     if CACHE is None:
         raise RuntimeError("Cache not initialized")
@@ -433,12 +464,11 @@ def _api_render(site: APISite, wikitext: str) -> str:
         path = ""
 
     key = (host, path, wikitext)
-    
-    # We store the memory cache on the CACHE object for convenience,
-    # or we could keep it local. The previous code had it as a func attr.
-    # Let's use the CACHE object's mem_cache_api
-    if key in CACHE._mem_cache_api:
-        return CACHE._mem_cache_api[key]
+
+    # Check in-memory HTML cache
+    cached_html = CACHE.get_rendered_html(key)
+    if cached_html is not None:
+        return cached_html
 
     params = {
         "action": "parse",
@@ -456,11 +486,8 @@ def _api_render(site: APISite, wikitext: str) -> str:
     else:
         html = data.get("parse", {}).get("text", {}).get("*", "") or wikitext
 
-    # In-memory LRU cache (cap 256)
-    CACHE._mem_cache_api[key] = html
-    if len(CACHE._mem_cache_api) > 256:
-        for k in list(CACHE._mem_cache_api.keys())[:64]:
-            del CACHE._mem_cache_api[k]
+    # Cache the rendered HTML
+    CACHE.cache_rendered_html(key, html)
     return html
 
 def _count_rendered_visible(site: APISite, wikitext: str) -> tuple[int, int]:

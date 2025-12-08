@@ -8,7 +8,17 @@ A MediaWiki bot that monitors word-limited statements on Wikipedia arbitration r
 
 The bot is configured via environment variables. All configuration keys use ALL_CAPS naming to match environment variables directly.
 
-### Environment Variables
+### Environment Variables for run.sh
+
+These variables are **required** when using `run.sh`:
+
+| Variable         | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `BOT_USER`       | **(required)** Bot username (format: `User@BotPasswordName`) |
+| `BOT_PASSWORD`   | **(required)** Bot password                      |
+| `PYWIKIBOT_DIR`  | **(required)** Directory for pywikibot config files (e.g., `.`) |
+
+### Optional Bot Configuration Variables
 
 | Variable               | Default                                                      | Description                         |
 | ---------------------- | ------------------------------------------------------------ | ----------------------------------- |
@@ -25,7 +35,7 @@ The bot is configured via environment variables. All configuration keys use ALL_
 | `DEFAULT_LIMIT`        | `500`                                                        | Default word limit                  |
 | `EVIDENCE_LIMIT_NAMED` | `1000`                                                       | Word limit for named parties        |
 | `EVIDENCE_LIMIT_OTHER` | `500`                                                        | Word limit for other users          |
-| `OVER_FACTOR`          | `1.10`                                                       | “within” multiplier                 |
+| `OVER_FACTOR`          | `1.10`                                                       | "within" multiplier                 |
 | `RUN_INTERVAL`         | `600`                                                        | Seconds between runs                |
 | `RED_HEX`              | `#ffcccc`                                                    | Over-limit highlight color          |
 | `AMBER_HEX`            | `#ffffcc`                                                    | Within-limit highlight color        |
