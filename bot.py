@@ -26,7 +26,7 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from enum import Enum
 from functools import lru_cache
@@ -185,7 +185,9 @@ class WordCountCache:
         """Load the cache from disk."""
         if self._loaded:
             return
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        dir_path = os.path.dirname(self.path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
         try:
             with open(self.path, "rb") as fh:
                 self._cache = pickle.load(fh)
@@ -246,7 +248,7 @@ def strip_parenthetical(username: str, body: str) -> str:
     if not m:
         return username
     base = m.group(1).rstrip()
-    if re.search(rf"[[]\s*(?:User(?: talk)?)\s*:\s*{re.escape(username)}\b", body, flags=re.I):
+    if re.search(rf"\[\[\s*(?:User(?: talk)?)\s*:\s*{re.escape(username)}\b", body, flags=re.I):
         return username
     return base
 
@@ -398,7 +400,7 @@ class RequestTable:
                 template_cell = f"|| <nowiki>{template}</nowiki>"
             else:
                 template_cell = (
-                    f'|| style=\"background:{CFG.amber_hex}\" | '
+                    f'|| style="background:{CFG.amber_hex}" | '
                     f'<nowiki>{template}</nowiki>'
                 )
 
@@ -948,7 +950,9 @@ def should_run(site: APISite) -> bool:
             ts_sources.append(p.latest_revision.timestamp)
         else:
             ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
-            
+    
+    if not ts_sources:
+        return True  # Run if we can't determine source timestamps
     return max(ts_sources) > ts_target
 
 @dataclass
@@ -1026,7 +1030,7 @@ def run_logic(site: APISite) -> None:
         LOG.info("No new edits on source pages; exiting early.")
         return
 
-    LOG.info("Changes detected. collecting data...")
+    LOG.info("Changes detected. Collecting data...")
     data = collect_all_data(site)
     reports = generate_reports(data)
     publish_changes(site, reports)
