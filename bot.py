@@ -26,11 +26,11 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from enum import Enum
 from functools import lru_cache
-from typing import ClassVar, List, Dict, Tuple, Type
+from typing import ClassVar, Type
 from datetime import datetime, timezone
 import pickle
 import hashlib
@@ -48,66 +48,179 @@ from bs4 import BeautifulSoup
 # Configuration                                                               #
 ###############################################################################
 
-# Default configuration values
-DEFAULT_CFG = {
-    "SITE": "en.wikipedia.org",
-    "API_PATH": "/w/",
-    "USER_AGENT": "WordcountClerkBot/2.4 (https://github.com/L235/WordcountClerkBot)",
-    "ARCA_PAGE": "Wikipedia:Arbitration/Requests/Clarification and Amendment",
-    "AE_PAGE": "Wikipedia:Arbitration/Requests/Enforcement",
-    "ARC_PAGE": "Wikipedia:Arbitration/Requests/Case",
-    "OPEN_CASES_PAGE": "Template:ArbComOpenTasks/Cases",
-    "TARGET_PAGE": "User:ClerkBot/word counts",
-    "DATA_PAGE": "User:ClerkBot/word counts/data",
-    "EXTENDED_PAGE": "User:ClerkBot/word counts/extended",
-    "DEFAULT_LIMIT": 500,
-    "EVIDENCE_LIMIT_NAMED": 1000,
-    "EVIDENCE_LIMIT_OTHER": 500,
-    "OVER_FACTOR": 1.10,
-    "RUN_INTERVAL": 600,
-    "RED_HEX": "#ff000040",
-    "AMBER_HEX": "#ffff0040",
-    "HEADER_TEXT": "",
-    "PLACEHOLDER_HEADING": "statement by {other-editor}",
-    "STATE_DIR": ".",
-    "EDIT_SUMMARY_SUFFIX": "([[User:ClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])",
-}
+@dataclass
+class BotConfig:
+    """Type-safe configuration container."""
+    site: str = "en.wikipedia.org"
+    api_path: str = "/w/"
+    user_agent: str = "WordcountClerkBot/2.4 (https://github.com/L235/WordcountClerkBot)"
+    
+    arca_page: str = "Wikipedia:Arbitration/Requests/Clarification and Amendment"
+    ae_page: str = "Wikipedia:Arbitration/Requests/Enforcement"
+    arc_page: str = "Wikipedia:Arbitration/Requests/Case"
+    open_cases_page: str = "Template:ArbComOpenTasks/Cases"
+    
+    target_page: str = "User:ClerkBot/word counts"
+    data_page: str = "User:ClerkBot/word counts/data"
+    extended_page: str = "User:ClerkBot/word counts/extended"
+    
+    default_limit: int = 500
+    evidence_limit_named: int = 1000
+    evidence_limit_other: int = 500
+    over_factor: float = 1.10
+    
+    run_interval: int = 600
+    
+    red_hex: str = "#ff000040"
+    amber_hex: str = "#ffff0040"
+    
+    header_text: str = ""
+    placeholder_heading: str = "statement by {other-editor}"
+    state_dir: str = "."
+    edit_summary_suffix: str = "([[User:ClerkBot#t1|task 1]], [[WP:EXEMPTBOT|exempt]])"
 
-# Global configuration dictionary
-CFG: Dict[str, object] = {}
+    @classmethod
+    def from_env(cls) -> BotConfig:
+        """Load configuration from environment variables."""
+        # Mapping from env var name to field name and type
+        # (env_var, field_name, type_converter)
+        env_map = {
+            "SITE": ("site", str),
+            "API_PATH": ("api_path", str),
+            "USER_AGENT": ("user_agent", str),
+            "ARCA_PAGE": ("arca_page", str),
+            "AE_PAGE": ("ae_page", str),
+            "ARC_PAGE": ("arc_page", str),
+            "OPEN_CASES_PAGE": ("open_cases_page", str),
+            "TARGET_PAGE": ("target_page", str),
+            "DATA_PAGE": ("data_page", str),
+            "EXTENDED_PAGE": ("extended_page", str),
+            "DEFAULT_LIMIT": ("default_limit", int),
+            "EVIDENCE_LIMIT_NAMED": ("evidence_limit_named", int),
+            "EVIDENCE_LIMIT_OTHER": ("evidence_limit_other", int),
+            "OVER_FACTOR": ("over_factor", float),
+            "RUN_INTERVAL": ("run_interval", int),
+            "RED_HEX": ("red_hex", str),
+            "AMBER_HEX": ("amber_hex", str),
+            "HEADER_TEXT": ("header_text", str),
+            "PLACEHOLDER_HEADING": ("placeholder_heading", str),
+            "STATE_DIR": ("state_dir", str),
+            "EDIT_SUMMARY_SUFFIX": ("edit_summary_suffix", str),
+        }
+        
+        kwargs = {}
+        for env_key, (field_name, converter) in env_map.items():
+            val = os.getenv(env_key)
+            if val is not None:
+                try:
+                    kwargs[field_name] = converter(val)
+                except ValueError:
+                    logging.getLogger(__name__).warning(
+                        f"Invalid value for {env_key}: {val}. Using default."
+                    )
+        
+        return cls(**kwargs)
+
+# Global configuration instance (populated in main)
+CFG: BotConfig = BotConfig()
 
 ###############################################################################
 # Logging                                                                     #
 ###############################################################################
 
-# Custom logging setup (INFO->stdout, WARNING+->stderr)
-class MaxLevelFilter(logging.Filter):
-    """Allow through only records <= a given level."""
-    def __init__(self, level: int):
-        super().__init__()
-        self.max_level = level
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        return record.levelno <= self.max_level
-
 LOG = logging.getLogger(__name__)
-LOG.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 
-# Handler for INFO and DEBUG -> stdout
-h_info = logging.StreamHandler(sys.stdout)
-h_info.setLevel(logging.DEBUG)
-h_info.addFilter(MaxLevelFilter(logging.INFO))
+def setup_logging(debug: bool = False) -> None:
+    """Configure logging for the application."""
+    level = logging.DEBUG if debug else logging.INFO
+    if not debug:
+        # Allow override via env var if not explicitly debugging
+        env_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        level = getattr(logging, env_level, logging.INFO)
 
-# Handler for WARNING and above -> stderr
-h_err = logging.StreamHandler(sys.stderr)
-h_err.setLevel(logging.WARNING)
+    LOG.setLevel(level)
 
-fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-h_info.setFormatter(fmt)
-h_err.setFormatter(fmt)
+    # Custom filtering: INFO -> stdout, WARNING+ -> stderr
+    class MaxLevelFilter(logging.Filter):
+        def __init__(self, max_level: int):
+            super().__init__()
+            self.max_level = max_level
+        def filter(self, record: logging.LogRecord) -> bool:
+            return record.levelno <= self.max_level
 
-LOG.addHandler(h_info)
-LOG.addHandler(h_err)
+    h_info = logging.StreamHandler(sys.stdout)
+    h_info.setLevel(logging.DEBUG)  # Filter will restrict this
+    h_info.addFilter(MaxLevelFilter(logging.INFO))
+    
+    h_err = logging.StreamHandler(sys.stderr)
+    h_err.setLevel(logging.WARNING)
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    h_info.setFormatter(fmt)
+    h_err.setFormatter(fmt)
+
+    # Clear existing handlers to avoid duplicates if called multiple times
+    if LOG.hasHandlers():
+        LOG.handlers.clear()
+
+    LOG.addHandler(h_info)
+    LOG.addHandler(h_err)
+
+
+###############################################################################
+# Word Count Cache                                                            #
+###############################################################################
+
+class WordCountCache:
+    """Manages persistent caching of word counts for rendered wikitext."""
+    
+    def __init__(self, state_dir: str):
+        self.path = os.path.join(os.path.expanduser(state_dir), "wordcount_cache.pkl")
+        self._cache: dict[str, tuple[int, int]] = {}
+        self._writes = 0
+        self._loaded = False
+        self._mem_cache_api: dict[tuple[str, str, str], str] = {} # Helper for API render
+
+    def load(self) -> None:
+        """Load the cache from disk."""
+        if self._loaded:
+            return
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        try:
+            with open(self.path, "rb") as fh:
+                self._cache = pickle.load(fh)
+        except Exception:
+            self._cache = {}
+        self._writes = 0
+        self._loaded = True
+
+    def flush(self) -> None:
+        """Persist the cache to disk."""
+        if not self._loaded:
+            return
+        try:
+            with open(self.path, "wb") as fh:
+                pickle.dump(self._cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            LOG.debug("Could not write wordcount cache: %s", e)
+
+    def get(self, key: str) -> tuple[int, int] | None:
+        return self._cache.get(key)
+
+    def put(self, key: str, value: tuple[int, int]) -> None:
+        self._cache[key] = value
+        
+        # Prune cache (~100k entries max, drop 10k oldest)
+        if len(self._cache) > 100000:
+            for k in list(self._cache.keys())[:10000]:
+                del self._cache[k]
+        
+        self._writes += 1
+        if self._writes % 50 == 0:  # amortize disk I/O
+            self.flush()
+
+# Global cache instance
+CACHE: WordCountCache | None = None
 
 ###############################################################################
 # Regex helpers & constants                                                   #
@@ -133,13 +246,13 @@ def strip_parenthetical(username: str, body: str) -> str:
     if not m:
         return username
     base = m.group(1).rstrip()
-    if re.search(rf"\[\[\s*(?:User(?: talk)?)\s*:\s*{re.escape(username)}\b", body, flags=re.I):
+    if re.search(rf"[[]\s*(?:User(?: talk)?)\s*:\s*{re.escape(username)}\b", body, flags=re.I):
         return username
     return base
 
-def user_links(body: str) -> List[str]:
+def user_links(body: str) -> list[str]:
     """Extract usernames from User: and User talk: links in wikitext."""
-    links: List[str] = []
+    links: list[str] = []
     for wl in mwpfh.parse(body, skip_style_tags=True).filter_wikilinks():
         title = str(wl.title)
         ns, _, rest = title.partition(":")
@@ -150,22 +263,11 @@ def user_links(body: str) -> List[str]:
 def fuzzy_username(header: str, body: str) -> str:
     """
     Find best matching username from header and body links.
-    
-    Args:
-        header: Raw username from section header
-        body: Full wikitext of the section
-        
-    Returns:
-        Best matching username, preferring:
-          1) An explicit {{ACWordStatus}} / {{Arbitration Committee word status}} |user=... override, if present
-          2) Exact matches from links in the body
-          3) Best fuzzy match to header among body links
     """
     def capitalize_first(s: str) -> str:
         return s[0].upper() + s[1:] if s else s
 
     # --- Template override (top priority) ---
-    # Accept {{ACWordStatus|...|user=...}} or {{Arbitration Committee word status|...|user=...}}
     try:
         code = mwpfh.parse(body)
         def _norm(name: str) -> str:
@@ -217,15 +319,15 @@ class Statement:
     def status(self) -> Status:
         if self.visible <= self.limit:
             return Status.OK
-        if self.visible <= self.limit * float(CFG["OVER_FACTOR"]):
+        if self.visible <= self.limit * CFG.over_factor:
             return Status.WITHIN
         return Status.OVER
 
     @property
     def colour(self) -> str | None:
         mapping = {
-            Status.WITHIN: str(CFG["AMBER_HEX"]),
-            Status.OVER: str(CFG["RED_HEX"]),
+            Status.WITHIN: CFG.amber_hex,
+            Status.OVER: CFG.red_hex,
         }
         return mapping.get(self.status)
 
@@ -234,7 +336,7 @@ class Statement:
 class RequestTable:
     title: str
     anchor: str
-    statements: List[Statement]
+    statements: list[Statement]
     closed: bool = False
 
     HEADER: ClassVar[str] = (
@@ -290,7 +392,7 @@ class RequestTable:
                 template_cell = f"|| <nowiki>{template}</nowiki>"
             else:
                 template_cell = (
-                    f'|| style="background:{CFG["AMBER_HEX"]}" | '
+                    f'|| style=\"background:{CFG.amber_hex}\" | '
                     f'<nowiki>{template}</nowiki>'
                 )
 
@@ -310,12 +412,11 @@ class RequestTable:
 def _api_render(site: APISite, wikitext: str) -> str:
     """
     Render a wikitext snippet to HTML via the MediaWiki parse API.
-
-    Previously we persisted the *entire* HTML to disk.  That turned the cache
-    pickle into a ballooning multi‑MB file and slowed load/save.  We now keep
-    only a **process‑local LRU** of the HTML (cheap) and persist *counts* (see
-    _count_rendered_visible) to disk instead.
+    Uses process-local LRU cache.
     """
+    if CACHE is None:
+        raise RuntimeError("Cache not initialized")
+
     try:
         host = site.hostname()
         path = site.apipath()
@@ -323,17 +424,13 @@ def _api_render(site: APISite, wikitext: str) -> str:
         host = str(site)
         path = ""
 
-    # Use the lru_cache defined above by calling its wrapped function with
-    # explicit key args.  We jump through a small wrapper to avoid recursion
-    # into this function (see RuntimeError above)
     key = (host, path, wikitext)
-    cache = getattr(_api_render, "_mem_cache", None)
-    if cache is None:
-        _api_render._mem_cache = {}
-        cache = _api_render._mem_cache
-
-    if key in cache:
-        return cache[key]
+    
+    # We store the memory cache on the CACHE object for convenience,
+    # or we could keep it local. The previous code had it as a func attr.
+    # Let's use the CACHE object's mem_cache_api
+    if key in CACHE._mem_cache_api:
+        return CACHE._mem_cache_api[key]
 
     params = {
         "action": "parse",
@@ -351,50 +448,21 @@ def _api_render(site: APISite, wikitext: str) -> str:
     else:
         html = data.get("parse", {}).get("text", {}).get("*", "") or wikitext
 
-    # In-memory LRU cache (cap 256 because HTML can be large)
-    cache[key] = html
-    if len(cache) > 256:
-        # drop ~64 oldest
-        for k in list(cache.keys())[:64]:
-            del cache[k]
+    # In-memory LRU cache (cap 256)
+    CACHE._mem_cache_api[key] = html
+    if len(CACHE._mem_cache_api) > 256:
+        for k in list(CACHE._mem_cache_api.keys())[:64]:
+            del CACHE._mem_cache_api[k]
     return html
 
-
-# ---------------------------------------------------------------------------
-# Word count cache storing only (visible, rendered) tuple per snippet
-# ---------------------------------------------------------------------------
-def _load_wordcount_cache() -> None:
-    if hasattr(_load_wordcount_cache, "_loaded"):
-        return
-    state_dir = os.path.expanduser(str(CFG["STATE_DIR"]))
-    os.makedirs(state_dir, exist_ok=True)
-    _load_wordcount_cache._path = os.path.join(state_dir, "wordcount_cache.pkl")
-    try:
-        with open(_load_wordcount_cache._path, "rb") as fh:
-            _load_wordcount_cache._cache = pickle.load(fh)
-    except Exception:
-        _load_wordcount_cache._cache = {}
-    _load_wordcount_cache._writes = 0
-    _load_wordcount_cache._loaded = True
-
-
-def _flush_wordcount_cache() -> None:
-    """Persist wordcount cache immediately."""
-    if not hasattr(_load_wordcount_cache, "_loaded"):
-        return
-    try:
-        with open(_load_wordcount_cache._path, "wb") as fh:
-            pickle.dump(_load_wordcount_cache._cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception as e:
-        LOG.debug("Could not write wordcount cache: %s", e)
-
-
-def _count_rendered_visible(site: APISite, wikitext: str) -> Tuple[int, int]:
+def _count_rendered_visible(site: APISite, wikitext: str) -> tuple[int, int]:
     """
-    Return (visible_words, rendered_words) for the given snippet, using a
-    persistent on‑disk cache keyed by site+apipath+wikitext SHA‑1 hash.
+    Return (visible_words, rendered_words) for the given snippet.
     """
-    _load_wordcount_cache()
+    if CACHE is None:
+        raise RuntimeError("Cache not initialized")
+    CACHE.load() # Ensure loaded
+
     try:
         host = site.hostname()
         path = site.apipath()
@@ -404,9 +472,9 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> Tuple[int, int]:
     raw_key = f"{host}|{path}|{wikitext}".encode("utf-8")
     cache_key = hashlib.sha1(raw_key).hexdigest()
 
-    wc_cache = _load_wordcount_cache._cache  # type: ignore[attr-defined]
-    if cache_key in wc_cache:
-        return wc_cache[cache_key]
+    cached_val = CACHE.get(cache_key)
+    if cached_val is not None:
+        return cached_val
 
     # Cache miss: render HTML, compute both counts once
     html = _api_render(site, wikitext)
@@ -434,26 +502,14 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> Tuple[int, int]:
     tokens = [t for t in re.split(r"\s+", text) if t and re.search(r"[A-Za-z0-9]", t)]
     visible = len(tokens)
 
-    wc_cache[cache_key] = (visible, rendered)
-    # Prune cache (~100k entries max, drop 10k oldest)
-    if len(wc_cache) > 100000:
-        for k in list(wc_cache.keys())[:10000]:
-            del wc_cache[k]
-    _load_wordcount_cache._writes += 1  # type: ignore[attr-defined]
-    if _load_wordcount_cache._writes % 50 == 0:  # amortize disk I/O
-        _flush_wordcount_cache()
+    CACHE.put(cache_key, (visible, rendered))
     return visible, rendered
 
-
 def rendered_word_count(site: APISite, wikitext: str) -> int:
-    """Count words in rendered HTML, including hidden content (cached)."""
     _v, r = _count_rendered_visible(site, wikitext)
     return r
 
 def visible_word_count(site: APISite, wikitext: str) -> int:
-    """
-    Approximate the front-end wordcount.js logic for *visible* words (cached).
-    """
     v, _r = _count_rendered_visible(site, wikitext)
     return v
 
@@ -472,7 +528,7 @@ class RawSection:
         return text[self.start : self.end]
 
 
-def scan_sections(text: str) -> List[RawSection]:
+def scan_sections(text: str) -> list[RawSection]:
     heads = list(HEADING_RE.finditer(text))
     return [
         RawSection(
@@ -488,24 +544,22 @@ def scan_sections(text: str) -> List[RawSection]:
 # Open case helpers                                                           #
 ###############################################################################
 
-def extract_open_cases(site: APISite) -> List[str]:
+def extract_open_cases(site: APISite) -> list[str]:
     """Extract case names from Template:ArbComOpenTasks/Cases."""
-    page_text = fetch_page(site, str(CFG["OPEN_CASES_PAGE"]))
+    page_text = fetch_page(site, CFG.open_cases_page)
     case_names = []
     
-    # Parse the wikitext to find ArbComOpenTasks/line templates
     code = mwpfh.parse(page_text, skip_style_tags=True)
     for template in code.filter_templates():
         template_name = str(template.name).strip()
         if template_name == "ArbComOpenTasks/line":
-            # Check if mode=case and extract name
             mode_param = template.get("mode").value
             name_param = template.get("name").value
             if mode_param and str(mode_param).strip() == "case" and name_param:
                 case_names.append(str(name_param).strip())
     return case_names
 
-def extract_involved_parties(site: APISite, case_name: str) -> List[str]:
+def extract_involved_parties(site: APISite, case_name: str) -> list[str]:
     """Extract involved parties from a case page."""
     case_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}"
     try:
@@ -517,12 +571,10 @@ def extract_involved_parties(site: APISite, case_name: str) -> List[str]:
     parties = []
     sections = scan_sections(page_text)
     
-    # Find "Involved parties" section (level 3 headers)
     for sec in sections:
         if sec.level == 3 and sec.title.lower() == "involved parties":
             body = sec.body(page_text)
-            # Look for {{admin|...}} and {{userlinks|...}} templates in the section
-            for match in re.finditer(r'\{\{\s*(?:admin|userlinks)\s*\|\s*(?:1\s*=\s*)?([^|}]+)', body, re.I):
+            for match in re.finditer(r'{{{\s*(?:admin|userlinks)\s*|\s*(?:1\s*=\s*)?([^|}] +)', body, re.I):
                 username = match.group(1).strip()
                 if username:
                     parties.append(username)
@@ -547,13 +599,12 @@ class BaseParser:
                 return int(m.group(1))
             except ValueError:
                 LOG.debug("Invalid ApprovedWordLimit value: %s", m.group(1))
-        return default or int(CFG["DEFAULT_LIMIT"])
+        return default or CFG.default_limit
 
     def _make_statement(
         self, raw_user: str, body: str, anchor: str, limit: int | None = None
     ) -> Statement:
         limit_val = self._extract_limit(body, limit)
-        # Check for ACWordStatus before stripping all templates
         has_acwordstatus = bool(ACWORDSTATUS_RE.search(body))
         body_no_templates = TEMPLATE_RE.sub("", body)
         visible = visible_word_count(self.site, body_no_templates)
@@ -567,24 +618,24 @@ class BaseParser:
             has_acwordstatus,
         )
 
-    def parse(self, text: str) -> List[RequestTable]:
+    def parse(self, text: str) -> list[RequestTable]:
         raise NotImplementedError
 
 
 class SimpleBoardParser(BaseParser):
-    def parse(self, text: str) -> List[RequestTable]:
+    def parse(self, text: str) -> list[RequestTable]:
         code = mwpfh.parse(text, skip_style_tags=True)
-        tables: List[RequestTable] = []
+        tables: list[RequestTable] = []
         for lvl2 in code.get_sections(levels=[2]):
             sec_title = mwpfh.parse(lvl2.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
             anchor = slugify(sec_title)
             sec_wikitext = str(lvl2)
             closed = bool(HAT_OPEN_RE.match(sec_wikitext.lstrip()))
 
-            statements: List[Statement] = []
+            statements: list[Statement] = []
             for st in lvl2.get_sections(levels=[3]):
                 heading = mwpfh.parse(st.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
-                if heading.lower() == CFG["PLACEHOLDER_HEADING"]:
+                if heading.lower() == CFG.placeholder_heading:
                     continue
                 if not heading.lower().startswith("statement by"):
                     continue
@@ -598,36 +649,29 @@ class SimpleBoardParser(BaseParser):
 
 class AEParser(BaseParser):
     _STMT = re.compile(r"^Statement by\s+", re.I)
-    _REQ_USER = re.compile(r";\s*User who is submitting.*?\{\{\s*userlinks\|(.*?)}}", re.I | re.S)
+    _REQ_USER = re.compile(r";\s*User who is submitting.*?{{{\s*userlinks\|(.*?)}}}", re.I | re.S)
     _PSEUDO = re.compile(r";\s*(\[\[WP:DIFF\|Diffs\]\] of edits[^:]*|Diffs of previous[^:]*|Additional comments[^:]*):", re.I)
 
-    def parse(self, text: str) -> List[RequestTable]:
+    def parse(self, text: str) -> list[RequestTable]:
         sections = scan_sections(text)
-        tables: List[RequestTable] = []
+        tables: list[RequestTable] = []
         current: RequestTable | None = None
 
         for i, sec in enumerate(sections):
-            # When we hit a level-2 header, start a new RequestTable
             if sec.level == 2:
-                # Find the start of the next level-2 section (or end of file)
                 next2_start = next(
                     (s.start for s in sections[i+1:] if s.level == 2),
                     len(text)
                 )
-                # Get everything from just after this header to just before the next level-2
                 body_full = text[sec.start:next2_start]
-
                 closed = bool(HAT_OPEN_RE.match(body_full.lstrip()))
-
                 current = RequestTable(sec.title, slugify(sec.title), [], closed)
                 tables.append(current)
                 continue
 
-            # Everything below here belongs to the most recent level-2
             if current is None:
                 continue
 
-            # Collect statements in level-3 and level-4 subsections
             if sec.level in {3, 4} and self._STMT.match(sec.title):
                 body = sec.body(text)
                 raw_user = self._STMT.sub("", sec.title)
@@ -635,7 +679,6 @@ class AEParser(BaseParser):
                     self._make_statement(raw_user, body, slugify(sec.title))
                 )
 
-            # Handle "Request concerning" blocks at level-3
             elif sec.level == 3 and sec.title.lower().startswith("request concerning"):
                 body = self._collect_request_body(sec, text)
                 if body:
@@ -662,41 +705,31 @@ class AEParser(BaseParser):
 
 
 class EvidenceParser(BaseParser):
-    """Parser for evidence pages in arbitration cases."""
-    
     def __init__(self, site: APISite, case_name: str):
         super().__init__(site)
         self.case_name = case_name
         self.involved_parties = extract_involved_parties(site, case_name)
     
     def _get_word_limit(self, username: str) -> int:
-        """Determine word limit based on whether user is a named party."""
         if username in self.involved_parties:
-            return int(CFG["EVIDENCE_LIMIT_NAMED"])
-        return int(CFG["EVIDENCE_LIMIT_OTHER"])
+            return CFG.evidence_limit_named
+        return CFG.evidence_limit_other
     
-    def parse(self, text: str) -> List[RequestTable]:
+    def parse(self, text: str) -> list[RequestTable]:
         sections = scan_sections(text)
-        statements: List[Statement] = []
+        statements: list[Statement] = []
         
-        # Look for level-2 sections with "Evidence presented by" pattern
         for i, sec in enumerate(sections):
             if sec.level == 2 and sec.title.lower().startswith("evidence presented by"):
                 raw_user = re.sub(r"^Evidence presented by\s+", "", sec.title, flags=re.I)
                 
-                # Skip placeholder sections (like "Evidence presented by {your user name}")
                 if raw_user.lower() == "{your user name}":
                     continue
                 
-                # Find the start of the next level-2 section (or end of file)
                 next2_start = next(
                     (s.start for s in sections[i+1:] if s.level == 2),
                     len(text)
                 )
-
-                # Include everything between the level-2 heading
-                # and the next level-2 (or end of file). This ensures that prose
-                # between the heading and the first === subsection is counted.
                 body = text[sec.start:next2_start]
                 
                 limit = self._get_word_limit(raw_user)
@@ -704,7 +737,6 @@ class EvidenceParser(BaseParser):
                     self._make_statement(raw_user, body, slugify(sec.title), limit)
                 )
         
-        # Create a single table for the evidence page
         if statements:
             return [RequestTable(f"{self.case_name}/Evidence", slugify(f"{self.case_name}_Evidence"), statements)]
         return []
@@ -713,52 +745,22 @@ class EvidenceParser(BaseParser):
 # Dynamic board registry                                                      #
 ###############################################################################
 
-def get_board_parsers() -> Dict[str, Tuple[str, Type[BaseParser]]]:
+def get_board_parsers() -> dict[str, tuple[str, Type[BaseParser]]]:
     return {
-        "ARCA": (str(CFG["ARCA_PAGE"]), SimpleBoardParser),
-        "AE": (str(CFG["AE_PAGE"]), AEParser),
-        "ARC": (str(CFG["ARC_PAGE"]), SimpleBoardParser),
+        "ARCA": (CFG.arca_page, SimpleBoardParser),
+        "AE": (CFG.ae_page, AEParser),
+        "ARC": (CFG.arc_page, SimpleBoardParser),
     }
 
 ###############################################################################
 # Runtime helpers                                                             #
 ###############################################################################
 
-def load_settings() -> None:
-    """Load settings from environment variables, falling back to defaults."""
-    # Start with defaults
-    CFG.update(DEFAULT_CFG.copy())
-    
-    # Process all environment variables directly
-    for env_var in DEFAULT_CFG.keys():
-        value = os.getenv(env_var)
-        if value is not None:
-            # Handle numeric conversions
-            if env_var in ['DEFAULT_LIMIT', 'EVIDENCE_LIMIT_NAMED', 'EVIDENCE_LIMIT_OTHER', 'RUN_INTERVAL']:
-                try:
-                    CFG[env_var] = int(value)
-                except ValueError:
-                    LOG.warning(f"Invalid {env_var} value: {value}, using default")
-            elif env_var == 'OVER_FACTOR':
-                try:
-                    CFG[env_var] = float(value)
-                except ValueError:
-                    LOG.warning(f"Invalid {env_var} value: {value}, using default")
-            else:
-                # String values
-                CFG[env_var] = value
-
 def connect() -> APISite:
     """
     Connect/login via pywikibot.
-
-    Expected env vars:
-        SITE: e.g. "en.wikipedia.org" (host form) – we derive code/family
-
-    Pywikibot itself handles cookie persistence in its own data dir.
     """
-    host = str(CFG["SITE"]).lower()
-    # Parse hostname: "<code>.wikipedia.org" -> ("en", "wikipedia")
+    host = CFG.site.lower()
     if host.endswith(".org"):
         parts = host.split(".")
         code = parts[0]
@@ -767,35 +769,30 @@ def connect() -> APISite:
         code, family = "en", "wikipedia"
 
     site = pywikibot.Site(code=code, fam=family)
-    site.login()  # try default account first
-
-    # Set custom user agent if provided (pywikibot reads from global config)
-    if CFG.get("USER_AGENT"):
+    site.login()
+    
+    if CFG.user_agent:
         try:
             import pywikibot.config as pwb_config
-            pwb_config.user_agent = str(CFG["USER_AGENT"])
+            pwb_config.user_agent = CFG.user_agent
         except Exception:
             LOG.debug("Could not set custom user-agent via pywikibot.config; ignoring.")
 
     return site
 
 def fetch_page(site: APISite, title: str) -> str:
-    """Fetch wikitext body of `title` from the wiki."""
     return pywikibot.Page(site, title).text
 
 @dataclass
 class ParsedData:
     """Container for parsed board and evidence data."""
-    boards: Dict[str, List[RequestTable]]
-    evidence: Dict[str, List[RequestTable]]
+    boards: dict[str, list[RequestTable]]
+    evidence: dict[str, list[RequestTable]]
 
 def collect_all_data(site: APISite) -> ParsedData:
-    """Collect and parse all board and evidence page data once."""
     boards = {}
     evidence = {}
-    # Note: signature type changed to APISite in earlier patch
     
-    # Process regular boards (ARCA, AE, ARC)
     for label, (page, ParserCls) in get_board_parsers().items():
         try:
             raw = fetch_page(site, page)
@@ -806,7 +803,6 @@ def collect_all_data(site: APISite) -> ParsedData:
             LOG.warning("Could not process board %s: %s", label, e)
             boards[label] = []
     
-    # Process evidence pages for open cases
     try:
         case_names = extract_open_cases(site)
         for case_name in case_names:
@@ -825,10 +821,8 @@ def collect_all_data(site: APISite) -> ParsedData:
     return ParsedData(boards, evidence)
 
 def assemble_report_from_data(data: ParsedData) -> str:
-    """Build the entire report wikitext from parsed data."""
-    blocks: List[str] = [CFG["HEADER_TEXT"]]
+    blocks: list[str] = [CFG.header_text]
     
-    # Process regular boards (ARCA, AE, ARC)
     for label, (page, _) in get_board_parsers().items():
         tables = data.boards.get(label, [])
         if not tables:
@@ -837,7 +831,6 @@ def assemble_report_from_data(data: ParsedData) -> str:
             body = "\n\n".join(t.to_wikitext(page) for t in tables)
             blocks.append(f"== {label} ==\n{body}")
     
-    # Process evidence pages for open cases
     if data.evidence:
         case_blocks = []
         for case_name, tables in data.evidence.items():
@@ -857,63 +850,43 @@ def assemble_report_from_data(data: ParsedData) -> str:
     
     return "\n\n".join(blocks)
 
-def assemble_report(site: APISite) -> str:
-    """Build the entire report wikitext by fetching each board and parsing it."""
-    return assemble_report_from_data(collect_all_data(site))
-
 def assemble_data_template_from_data(parsed_data: ParsedData) -> str:
-    """
-    Build a nested #switch template containing full data for each statement.
-    """
-    # First, gather everything into a nested dict:
     data: dict[str, dict[str, dict[str, Statement]]] = {}
     
-    # Process regular boards (ARCA, AE, ARC)
     for label, tables in parsed_data.boards.items():
         for tbl in tables:
-            # Use the title instead of anchor for the key to preserve spaces
             data.setdefault(label, {}).setdefault(tbl.title, {})
             for stmt in tbl.statements:
                 data[label][tbl.title][stmt.user] = stmt
     
-    # Process evidence pages for open cases
     for case_name, tables in parsed_data.evidence.items():
         for tbl in tables:
             data.setdefault("Case pages", {}).setdefault(tbl.title, {})
             for stmt in tbl.statements:
                 data["Case pages"][tbl.title][stmt.user] = stmt
 
-    # Now build the wikitext:
     parts: list[str] = []
-    parts.append('{{#switch: {{{page}}}')  # outer switch on page
+    parts.append('{{#switch: {{{page}}}')
     for label, requests in data.items():
-        parts.append(' | ' + label + ' = {{#switch: {{{section}}}')  # inner switch on section
+        parts.append(' | ' + label + ' = {{#switch: {{{section}}}')
         for req, users in requests.items():
-            parts.append('     | ' + req + ' = {{#switch: {{{user}}}')  # inner switch on user
+            parts.append('     | ' + req + ' = {{#switch: {{{user}}}')
             for user, stmt in users.items():
-                parts.append('         | ' + user + ' = {{#switch: {{{type}}}')  # inner switch on type
+                parts.append('         | ' + user + ' = {{#switch: {{{type}}}')
                 parts.append(f'             | words       = {stmt.visible}')
                 parts.append(f'             | uncollapsed = {stmt.expanded}')
                 parts.append(f'             | limit       = {stmt.limit}')
                 parts.append(f'             | status      = {stmt.status.value}')
-                parts.append('           }}')  # close type switch
-            parts.append('       }}')  # close user switch
-        parts.append('   }}')  # close section switch
-    parts.append('}}')  # close page switch
+                parts.append('           }}')
+            parts.append('       }}')
+        parts.append('   }}')
+    parts.append('}}')
 
     return "\n".join(parts)
 
-def assemble_data_template(site: APISite) -> str:
-    """
-    Build a nested #switch template containing full data for each statement.
-    """
-    return assemble_data_template_from_data(collect_all_data(site))
-
 def assemble_extended_report_from_data(data: ParsedData) -> str:
-    """Build the extended report wikitext with template column from parsed data."""
-    blocks: List[str] = [CFG["HEADER_TEXT"]]
+    blocks: list[str] = [CFG.header_text]
     
-    # Process regular boards (ARCA, AE, ARC)
     for label, (page, _) in get_board_parsers().items():
         tables = data.boards.get(label, [])
         if not tables:
@@ -922,7 +895,6 @@ def assemble_extended_report_from_data(data: ParsedData) -> str:
             body = "\n\n".join(t.to_extended_wikitext(page, label) for t in tables)
             blocks.append(f"== {label} ==\n{body}")
     
-    # Process evidence pages for open cases
     if data.evidence:
         case_blocks = []
         for case_name, tables in data.evidence.items():
@@ -942,137 +914,143 @@ def assemble_extended_report_from_data(data: ParsedData) -> str:
     
     return "\n\n".join(blocks)
 
-def assemble_extended_report(site: APISite) -> str:
-    """Build the extended report wikitext with template column."""
-    return assemble_extended_report_from_data(collect_all_data(site))
+# ---------------------------------------------------------------------------
+# Logic Refactoring: Decomposed Steps
+# ---------------------------------------------------------------------------
 
-def run_once(site: APISite) -> None:
-    """
-    Build report, compare to target page, and save if changed.
-    """
-    # ---- early-exit check ----
-    target_title = str(CFG["TARGET_PAGE"])
-    target = pywikibot.Page(site, target_title)
-    # Get the latest revision of the target page (if it exists)
-    if target.exists():
-        try:
-            ts_target = target.latest_revision.timestamp
-        except Exception:
-            ts_target = datetime.min.replace(tzinfo=timezone.utc)
-    else:
-        ts_target = datetime.min.replace(tzinfo=timezone.utc)
-
-    # Fetch the last edit time of each source page
-    source_titles = [
-        str(CFG["AE_PAGE"]),
-        str(CFG["ARC_PAGE"]),
-        str(CFG["ARCA_PAGE"]),
-        str(CFG["OPEN_CASES_PAGE"]),
-    ]
+def should_run(site: APISite) -> bool:
+    """Check timestamps to see if a run is needed."""
+    target_page = pywikibot.Page(site, CFG.target_page)
+    if not target_page.exists():
+        return True # Always run if target doesn't exist
     
-    # Add evidence pages for open cases
+    ts_target = target_page.latest_revision.timestamp
+
+    # Check source pages
+    source_titles = [CFG.ae_page, CFG.arc_page, CFG.arca_page, CFG.open_cases_page]
     try:
         case_names = extract_open_cases(site)
         for case_name in case_names:
             source_titles.append(f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence")
     except Exception as e:
         LOG.warning("Could not fetch open cases for early-exit check: %s", e)
+
     ts_sources = []
     for title in source_titles:
         p = pywikibot.Page(site, title)
         if p.exists():
-            try:
-                ts_sources.append(p.latest_revision.timestamp)
-            except Exception:
-                ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
+            ts_sources.append(p.latest_revision.timestamp)
         else:
             ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
+            
+    return max(ts_sources) > ts_target
 
-    # If our report is newer than all source pages, nothing to do
-    if ts_target > max(ts_sources):
-        LOG.info("No new edits on AE/ARC/ARCA since last report; exiting early.")
-        return
-    # ---- end early-exit check ----
+@dataclass
+class ReportContent:
+    text: str
+    data: str
+    extended: str
+    stats_summary: str
 
-    # Collect all data once
-    data = collect_all_data(site)
+def generate_reports(data: ParsedData) -> ReportContent:
+    """Generate all report variations from parsed data."""
+    text = assemble_report_from_data(data)
+    data_tmpl = assemble_data_template_from_data(data)
+    extended = assemble_extended_report_from_data(data)
     
-    # Generate all three outputs using the shared data
-    new_text = assemble_report_from_data(data)
-    new_data = assemble_data_template_from_data(data)
-    new_extended = assemble_extended_report_from_data(data)
+    # Compute stats for edit summary
+    all_tables: list[RequestTable] = []
+    for tables in data.boards.values():
+        all_tables.extend(tables)
+    for tables in data.evidence.values():
+        all_tables.extend(tables)
+
+    open_tables = [tbl for tbl in all_tables if not tbl.closed]
+    all_statements = [s for tbl in open_tables for s in tbl.statements]
     
-    # Fetch current target wikitext
+    over = sum(1 for s in all_statements if s.status == Status.OVER)
+    within = sum(1 for s in all_statements if s.status == Status.WITHIN)
+    total = len(all_statements)
+    pending = len(open_tables)
+
+    stats = (
+        f"{over} statements over, {within} statements within 10%, "
+        f"{total} total statements, {pending} pending requests"
+    )
+    return ReportContent(text, data_tmpl, extended, stats)
+
+def publish_changes(site: APISite, content: ReportContent) -> None:
+    """Compare generated content with wiki and save if different."""
+    
+    # 1. Main Report
+    target = pywikibot.Page(site, CFG.target_page)
     current_text = target.text if target.exists() else ""
-    if new_text != current_text:
-        # Compute stats for the edit summary using the shared data
-        all_tables: List[RequestTable] = []
-        for tables in data.boards.values():
-            all_tables.extend(tables)
-        for tables in data.evidence.values():
-            all_tables.extend(tables)
-
-        # Only count open requests and their statements
-        open_tables = [tbl for tbl in all_tables if not tbl.closed]
-        all_statements = [s for tbl in open_tables for s in tbl.statements]
-        x = sum(1 for s in all_statements if s.status == Status.OVER)
-        y = sum(1 for s in all_statements if s.status == Status.WITHIN)
-        z = len(all_statements)
-        a = len(open_tables)
-
-        summary = (
-            f"updating table ({x} statements over, {y} statements within 10%, "
-            f"{z} total statements, {a} pending requests) "
-            f"{CFG['EDIT_SUMMARY_SUFFIX']}"
-        )
-        target.text = new_text
+    
+    if content.text != current_text:
+        summary = f"updating table ({content.stats_summary}) {CFG.edit_summary_suffix}"
+        target.text = content.text
         target.save(summary=summary, minor=False, botflag=False)
         LOG.info("Updated target page.")
-
-        # Now update the data template page
-        data_title = str(CFG["DATA_PAGE"])
-        data_page = pywikibot.Page(site, data_title)
-        current_data = data_page.text if data_page.exists() else ""
-        if new_data != current_data:
-            data_page.text = new_data
-            data_page.save(summary=(f"Updating data template ({a} open requests, {z} statements) "
-                                    f"{CFG['EDIT_SUMMARY_SUFFIX']}"),
-                           minor=False, botflag=False)
-            LOG.info("Updated data template page.")
-
-        # Now update the extended page
-        extended_title = str(CFG["EXTENDED_PAGE"])
-        extended_page = pywikibot.Page(site, extended_title)
-        current_extended = extended_page.text if extended_page.exists() else ""
-        if new_extended != current_extended:
-            extended_page.text = new_extended
-            extended_page.save(summary=(f"Updating extended report ({a} open requests, {z} statements) "
-                                        f"{CFG['EDIT_SUMMARY_SUFFIX']}"),
-                               minor=False, botflag=False)
-            LOG.info("Updated extended report page.")
     else:
-        LOG.info("No changes detected.")
+        LOG.info("No changes to target page.")
+
+    # 2. Data Template
+    data_page = pywikibot.Page(site, CFG.data_page)
+    current_data = data_page.text if data_page.exists() else ""
+    
+    if content.data != current_data:
+        summary = f"Updating data template ({content.stats_summary}) {CFG.edit_summary_suffix}"
+        data_page.text = content.data
+        data_page.save(summary=summary, minor=False, botflag=False)
+        LOG.info("Updated data template page.")
+
+    # 3. Extended Report
+    ext_page = pywikibot.Page(site, CFG.extended_page)
+    current_ext = ext_page.text if ext_page.exists() else ""
+    
+    if content.extended != current_ext:
+        summary = f"Updating extended report ({content.stats_summary}) {CFG.edit_summary_suffix}"
+        ext_page.text = content.extended
+        ext_page.save(summary=summary, minor=False, botflag=False)
+        LOG.info("Updated extended report page.")
+
+def run_logic(site: APISite) -> None:
+    """Orchestrate a single run."""
+    if not should_run(site):
+        LOG.info("No new edits on source pages; exiting early.")
+        return
+
+    LOG.info("Changes detected. collecting data...")
+    data = collect_all_data(site)
+    reports = generate_reports(data)
+    publish_changes(site, reports)
 
 def main(loop: bool, debug: bool) -> None:
     """
     Entry point: load settings, connect, and either run once or loop.
     """
-    if debug:
-        LOG.setLevel(logging.DEBUG)
-    load_settings()
+    global CFG, CACHE
+    
+    setup_logging(debug)
+    CFG = BotConfig.from_env()
+    CACHE = WordCountCache(CFG.state_dir)
+    
     site = connect()
+    
     if not loop:
-        run_once(site)
-        _flush_wordcount_cache()   # Persist new counts
+        run_logic(site)
+        CACHE.flush()
     else:
-        interval = int(CFG["RUN_INTERVAL"])
+        interval = CFG.run_interval
         while True:
             try:
-                run_once(site)
+                run_logic(site)
             except Exception:
-                LOG.exception("Error; sleeping before retry")
+                LOG.exception("Error during run; sleeping before retry")
+            
+            CACHE.flush()
+            LOG.info(f"Sleeping for {interval} seconds...")
             time.sleep(interval)
-            _flush_wordcount_cache() # Persist new counts
 
 ###############################################################################
 # CLI entry-point
