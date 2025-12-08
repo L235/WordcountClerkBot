@@ -14,8 +14,6 @@ The bot is configured via environment variables. All configuration keys use ALL_
 | ---------------------- | ------------------------------------------------------------ | ----------------------------------- |
 | `SITE`                 | `en.wikipedia.org`                                           | MediaWiki domain                    |
 | `API_PATH`             | `/w/`                                                        | API path                            |
-| `BOT_USER`             | **(required)**                                               | Bot username                        |
-| `BOT_PASSWORD`         | **(required)**                                               | Bot password                        |
 | `USER_AGENT`           | `WordcountClerkBot/2.4 (<repo URL>)`                         | User-agent string                   |
 | `STATE_DIR`            | `.` (current directory)                                      | Directory for state files (cookies) |
 | `ARCA_PAGE`            | `Wikipedia:Arbitration/Requests/Clarification and Amendment` | ARCA requests page title            |
@@ -38,7 +36,9 @@ The bot is configured via environment variables. All configuration keys use ALL_
 
 ## Quick Start
 
-### Local (direct)
+### Using run.sh (Recommended)
+
+The provided `run.sh` script handles Pywikibot configuration automatically using environment variables.
 
 ```bash
 # Install dependencies
@@ -47,12 +47,21 @@ pip install -r requirements.txt
 # Set required environment variables
 export BOT_USER="YourBot@PasswordName"
 export BOT_PASSWORD="your_password"
+export PYWIKIBOT_DIR="."
 
 # Run continuously
-python arca_wordcount_bot.py
+./run.sh
 
 # Run once and exit
-python arca_wordcount_bot.py --once
+./run.sh --once
+```
+
+### Direct Execution
+
+If you have a `user-config.py` set up manually:
+
+```bash
+python bot.py
 ```
 
 ---
