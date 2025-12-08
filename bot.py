@@ -385,6 +385,12 @@ class RequestTable:
             if not s.user:
                 continue
             style = f" style=\"background:{s.colour}\"" if s.colour else ""
+            # Construct {{ACWordStatus|...}} template.
+            # Brace counting explanation:
+            # 1. First 4 braces '{{{{': Output literal '{{' (f-string escaping: {{ -> {).
+            # 2. Last 5 braces '}}}}}':
+            #    - The first '}' is the closing brace for the f-string variable '{s.user}'.
+            #    - The remaining 4 '}}}}' output literal '}}' (f-string escaping: }} -> }).
             template = f"{{{{ACWordStatus|page={label}|section={self.title}|user={s.user}}}}}"
 
             # Highlight the cell only when the template is missing
@@ -574,7 +580,7 @@ def extract_involved_parties(site: APISite, case_name: str) -> list[str]:
     for sec in sections:
         if sec.level == 3 and sec.title.lower() == "involved parties":
             body = sec.body(page_text)
-            for match in re.finditer(r'{{{\s*(?:admin|userlinks)\s*|\s*(?:1\s*=\s*)?([^|}] +)', body, re.I):
+            for match in re.finditer(r'\{\{\s*(?:admin|userlinks)\s*\|\s*(?:1\s*=\s*)?([^|}]+)', body, re.I):
                 username = match.group(1).strip()
                 if username:
                     parties.append(username)
@@ -649,7 +655,7 @@ class SimpleBoardParser(BaseParser):
 
 class AEParser(BaseParser):
     _STMT = re.compile(r"^Statement by\s+", re.I)
-    _REQ_USER = re.compile(r";\s*User who is submitting.*?{{{\s*userlinks\|(.*?)}}}", re.I | re.S)
+    _REQ_USER = re.compile(r";\s*User who is submitting.*?\{\{\s*userlinks\|(.*?)}}", re.I | re.S)
     _PSEUDO = re.compile(r";\s*(\[\[WP:DIFF\|Diffs\]\] of edits[^:]*|Diffs of previous[^:]*|Additional comments[^:]*):", re.I)
 
     def parse(self, text: str) -> list[RequestTable]:
