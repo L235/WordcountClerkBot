@@ -52,8 +52,6 @@ from bs4 import BeautifulSoup
 DEFAULT_CFG = {
     "SITE": "en.wikipedia.org",
     "API_PATH": "/w/",
-    "BOT_USER": "BotUser@PasswordName",
-    "BOT_PASSWORD": "",
     "USER_AGENT": "WordcountClerkBot/2.4 (https://github.com/L235/WordcountClerkBot)",
     "ARCA_PAGE": "Wikipedia:Arbitration/Requests/Clarification and Amendment",
     "AE_PAGE": "Wikipedia:Arbitration/Requests/Enforcement",
@@ -756,11 +754,8 @@ def connect() -> APISite:
 
     Expected env vars:
         SITE: e.g. "en.wikipedia.org" (host form) – we derive code/family
-        BOT_USER: "UserName@BotPasswordName" (BotPassword username form) *optional*
-        BOT_PASSWORD: password for the BotPassword (optional; else rely on user-config).
 
-    Pywikibot itself handles cookie persistence in its own data dir, so we drop
-    the manual cookiejar/session plumbing formerly used with mwclient.
+    Pywikibot itself handles cookie persistence in its own data dir.
     """
     host = str(CFG["SITE"]).lower()
     # Parse hostname: "<code>.wikipedia.org" -> ("en", "wikipedia")
@@ -773,19 +768,6 @@ def connect() -> APISite:
 
     site = pywikibot.Site(code=code, fam=family)
     site.login()  # try default account first
-
-    # If explicit BotPassword creds supplied, ensure we're logged in as that user.
-    bot_user = str(CFG["BOT_USER"])
-    bot_pass = str(CFG["BOT_PASSWORD"])
-    if bot_user and bot_pass:
-        # BotPassword usernames are "MainAccount@AppName" -> pywikibot.LoginManager
-        try:
-            from pywikibot.login import LoginManager
-            lm = LoginManager(password=bot_pass, site=site, user=bot_user)
-            lm.login()
-            LOG.info("Logged in as %s via BotPassword.", bot_user)
-        except Exception as e:
-            LOG.warning("BotPassword login failed (%s); continuing with default credentials.", e)
 
     # Set custom user agent if provided (pywikibot reads from global config)
     if CFG.get("USER_AGENT"):
