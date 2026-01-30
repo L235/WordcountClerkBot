@@ -29,7 +29,6 @@ import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from enum import Enum
-from functools import lru_cache
 from typing import ClassVar, Type
 from datetime import datetime, timezone
 import pickle
@@ -198,7 +197,7 @@ class WordCountCache:
         self._cache: dict[str, tuple[int, int]] = {}
         self._writes = 0
         self._loaded = False
-        self._mem_cache_html: dict[tuple[str, str, str], str] = {}  # In-memory HTML cache
+        self._mem_cache_html: dict[tuple[str, str, str, str], str] = {}  # In-memory HTML cache
 
     def load(self) -> None:
         """Load the cache from disk."""
@@ -240,11 +239,11 @@ class WordCountCache:
         if self._writes % 50 == 0:  # amortize disk I/O
             self.flush()
 
-    def get_rendered_html(self, key: tuple[str, str, str]) -> str | None:
+    def get_rendered_html(self, key: tuple[str, str, str, str]) -> str | None:
         """Get rendered HTML from in-memory cache."""
         return self._mem_cache_html.get(key)
 
-    def cache_rendered_html(self, key: tuple[str, str, str], html: str) -> None:
+    def cache_rendered_html(self, key: tuple[str, str, str, str], html: str) -> None:
         """Cache rendered HTML in memory with FIFO pruning at 256 entries."""
         self._mem_cache_html[key] = html
         if len(self._mem_cache_html) > 256:
@@ -448,10 +447,16 @@ class RequestTable:
 # Word-count helpers
 ###############################################################################
 
-def _api_render(site: APISite, wikitext: str) -> str:
+def _api_render(site: APISite, wikitext: str, title: str | None = None) -> str:
     """
     Render a wikitext snippet to HTML via the MediaWiki parse API.
     Uses in-memory cache for rendered HTML.
+
+    Args:
+        site: The pywikibot site to use for the API call.
+        wikitext: The wikitext to render.
+        title: Optional page title for context. Templates like {{tq}} behave
+               differently based on whether they're on a talk/project page.
     """
     if CACHE is None:
         raise RuntimeError("Cache not initialized")
@@ -463,7 +468,7 @@ def _api_render(site: APISite, wikitext: str) -> str:
         host = str(site)
         path = ""
 
-    key = (host, path, wikitext)
+    key = (host, path, title or "", wikitext)
 
     # Check in-memory HTML cache
     cached_html = CACHE.get_rendered_html(key)
@@ -476,6 +481,8 @@ def _api_render(site: APISite, wikitext: str) -> str:
         "prop": "text",
         "contentmodel": "wikitext",
     }
+    if title:
+        params["title"] = title
     req = pwb_api.Request(site=site, parameters=params)
     LOG.info("Making render API call for wikitext (length: %d)", len(wikitext))
     try:
@@ -490,9 +497,17 @@ def _api_render(site: APISite, wikitext: str) -> str:
     CACHE.cache_rendered_html(key, html)
     return html
 
-def _count_rendered_visible(site: APISite, wikitext: str) -> tuple[int, int]:
+def _count_rendered_visible(
+    site: APISite, wikitext: str, title: str | None = None
+) -> tuple[int, int]:
     """
     Return (visible_words, rendered_words) for the given snippet.
+
+    Args:
+        site: The pywikibot site to use for the API call.
+        wikitext: The wikitext to count words in.
+        title: Optional page title for context. Templates like {{tq}} behave
+               differently based on whether they're on a talk/project page.
     """
     if CACHE is None:
         raise RuntimeError("Cache not initialized")
@@ -504,7 +519,7 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> tuple[int, int]:
     except Exception:
         host = str(site)
         path = ""
-    raw_key = f"{host}|{path}|{wikitext}".encode("utf-8")
+    raw_key = f"{host}|{path}|{title or ''}|{wikitext}".encode("utf-8")
     cache_key = hashlib.sha1(raw_key).hexdigest()
 
     cached_val = CACHE.get(cache_key)
@@ -512,7 +527,7 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> tuple[int, int]:
         return cached_val
 
     # Cache miss: render HTML, compute both counts once
-    html = _api_render(site, wikitext)
+    html = _api_render(site, wikitext, title)
 
     # Rendered words (all text, including hidden)
     rendered = len(WORD_RE.findall(re.sub(r"<[^>]+>", "", html)))
@@ -533,6 +548,8 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> tuple[int, int]:
         tag.decompose()
     for tag in soup.select("span.localcomments"):
         tag.decompose()
+    for tag in soup.select(".error"):
+        tag.decompose()
     text = _TS_RE.sub("", soup.get_text())
     tokens = [t for t in re.split(r"\s+", text) if t and re.search(r"[A-Za-z0-9]", t)]
     visible = len(tokens)
@@ -540,12 +557,19 @@ def _count_rendered_visible(site: APISite, wikitext: str) -> tuple[int, int]:
     CACHE.put(cache_key, (visible, rendered))
     return visible, rendered
 
-def rendered_word_count(site: APISite, wikitext: str) -> int:
-    _v, r = _count_rendered_visible(site, wikitext)
+def rendered_word_count(
+    site: APISite, wikitext: str, title: str | None = None
+) -> int:
+    """Return the rendered (uncollapsed) word count for the given snippet."""
+    _v, r = _count_rendered_visible(site, wikitext, title)
     return r
 
-def visible_word_count(site: APISite, wikitext: str) -> int:
-    v, _r = _count_rendered_visible(site, wikitext)
+
+def visible_word_count(
+    site: APISite, wikitext: str, title: str | None = None
+) -> int:
+    """Return the visible word count for the given snippet."""
+    v, _r = _count_rendered_visible(site, wikitext, title)
     return v
 
 ###############################################################################
@@ -642,8 +666,10 @@ class BaseParser:
         limit_val = self._extract_limit(body, limit)
         has_acwordstatus = bool(ACWORDSTATUS_RE.search(body))
         body_no_templates = TEMPLATE_RE.sub("", body)
-        visible = visible_word_count(self.site, body_no_templates)
-        expanded = rendered_word_count(self.site, body_no_templates)
+        # Pass board_page as title for proper template rendering context.
+        # Templates like {{tq}} only work on talk/project pages.
+        visible = visible_word_count(self.site, body_no_templates, self.board_page)
+        expanded = rendered_word_count(self.site, body_no_templates, self.board_page)
         return Statement(
             fuzzy_username(raw_user, body),
             anchor,
