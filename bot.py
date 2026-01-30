@@ -12,8 +12,9 @@ A bot that monitors word counts in Wikipedia arbitration requests. It:
 * Updates automatically on a configurable interval
 
 The bot uses HTML parsing to match the front-end word counter exactly,
-excluding hidden content, collapsed sections, and struck-through text.
-Only the visible word count is compared against the word limit policy.
+excluding hidden content, collapsed sections, struck-through text, and
+template error messages. Only the visible word count is compared against
+the word limit policy.
 """
 from __future__ import annotations
 
@@ -557,17 +558,13 @@ def _count_rendered_visible(
     CACHE.put(cache_key, (visible, rendered))
     return visible, rendered
 
-def rendered_word_count(
-    site: APISite, wikitext: str, title: str | None = None
-) -> int:
+def rendered_word_count(site: APISite, wikitext: str, title: str | None = None) -> int:
     """Return the rendered (uncollapsed) word count for the given snippet."""
     _v, r = _count_rendered_visible(site, wikitext, title)
     return r
 
 
-def visible_word_count(
-    site: APISite, wikitext: str, title: str | None = None
-) -> int:
+def visible_word_count(site: APISite, wikitext: str, title: str | None = None) -> int:
     """Return the visible word count for the given snippet."""
     v, _r = _count_rendered_visible(site, wikitext, title)
     return v
