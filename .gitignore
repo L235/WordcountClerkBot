@@ -22,6 +22,9 @@ env/
 # Mac
 .DS_Store
 
+# Claude Code
+CLAUDE.local.md
+
 # Pywikibot and bot-specific files
 *.lwp
 apicache/
