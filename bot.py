@@ -551,8 +551,8 @@ def _count_rendered_visible(
         tag.decompose()
     for tag in soup.select(".error"):
         tag.decompose()
-    # Exclude quoted text from {{tq}} template (talk page quotes)
-    for tag in soup.select(".inline-quote-talk, .inline-quote-talk-italic"):
+    # Exclude quoted text from talk page quote templates ({{tq}}, {{tqb}}, etc.)
+    for tag in soup.select(".inline-quote-talk, .talkquote"):
         tag.decompose()
     text = _TS_RE.sub("", soup.get_text())
     tokens = [t for t in re.split(r"\s+", text) if t and re.search(r"[A-Za-z0-9]", t)]
