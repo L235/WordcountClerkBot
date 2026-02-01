@@ -6,7 +6,7 @@ for different types of content that should not be counted as visible words.
 
 import re
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 # Import the module under test
 import bot
@@ -70,16 +70,16 @@ class TestCountRenderedVisible:
         html = "<p>Hello world this is a test.</p>"
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 6
-            assert rendered == 6
+            assert visible == 6, f"Expected 6 visible words, got {visible}"
+            assert rendered == 6, f"Expected 6 rendered words, got {rendered}"
 
     def test_rendered_strips_all_html_tags(self, mock_site):
         """Rendered count strips HTML tags but counts all text."""
         html = "<p>One <strong>two</strong> <em>three</em></p>"
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert rendered == 3
-            assert visible == 3
+            assert rendered == 3, f"Expected 3 rendered words, got {rendered}"
+            assert visible == 3, f"Expected 3 visible words, got {visible}"
 
     # Reference exclusion tests
 
@@ -94,8 +94,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 5  # Only "Main text has five words"
-            assert rendered == 13  # All words including references
+            assert visible == 5, f"Expected 5 visible words (Main text has five words), got {visible}"
+            assert rendered == 13, f"Expected 13 rendered words (all including references), got {rendered}"
 
     def test_excludes_div_references(self, mock_site):
         """References in <div class="references"> are excluded from visible count."""
@@ -107,8 +107,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 3  # "Main content here"
-            assert rendered == 6
+            assert visible == 3, f"Expected 3 visible words (Main content here), got {visible}"
+            assert rendered == 6, f"Expected 6 rendered words, got {rendered}"
 
     def test_excludes_div_reflist(self, mock_site):
         """References in <div class="reflist"> are excluded from visible count."""
@@ -122,8 +122,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 3  # "The main statement"
-            assert rendered == 5
+            assert visible == 3, f"Expected 3 visible words (The main statement), got {visible}"
+            assert rendered == 5, f"Expected 5 rendered words, got {rendered}"
 
     # Hidden content tests
 
@@ -135,8 +135,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 3  # "Visible text here"
-            assert rendered == 6
+            assert visible == 3, f"Expected 3 visible words (Visible text here), got {visible}"
+            assert rendered == 6, f"Expected 6 rendered words, got {rendered}"
 
     def test_excludes_display_none_case_insensitive(self, mock_site):
         """display:none matching is case-insensitive."""
@@ -146,8 +146,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2
-            assert rendered == 4
+            assert visible == 2, f"Expected 2 visible words, got {visible}"
+            assert rendered == 4, f"Expected 4 rendered words, got {rendered}"
 
     def test_excludes_hidden_attribute(self, mock_site):
         """Elements with [hidden] attribute are excluded from visible count."""
@@ -157,8 +157,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Shown text"
-            assert rendered == 4
+            assert visible == 2, f"Expected 2 visible words (Shown text), got {visible}"
+            assert rendered == 4, f"Expected 4 rendered words, got {rendered}"
 
     def test_excludes_aria_hidden(self, mock_site):
         """Elements with aria-hidden='true' are excluded from visible count."""
@@ -168,8 +168,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Main content"
-            assert rendered == 5
+            assert visible == 2, f"Expected 2 visible words (Main content), got {visible}"
+            assert rendered == 5, f"Expected 5 rendered words, got {rendered}"
 
     # Collapsed content tests
 
@@ -182,8 +182,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 4  # "Before collapse" + "After collapse"
-            assert rendered == 7
+            assert visible == 4, f"Expected 4 visible words (Before/After collapse), got {visible}"
+            assert rendered == 7, f"Expected 7 rendered words, got {rendered}"
 
     def test_excludes_mw_collapsible_content(self, mock_site):
         """Elements with .mw-collapsible-content are excluded from visible count."""
@@ -193,8 +193,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Normal text"
-            assert rendered == 5
+            assert visible == 2, f"Expected 2 visible words (Normal text), got {visible}"
+            assert rendered == 5, f"Expected 5 rendered words, got {rendered}"
 
     # Struck-through text tests
 
@@ -203,24 +203,24 @@ class TestCountRenderedVisible:
         html = "<p>Keep this <s>remove this</s> and this.</p>"
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 4  # "Keep this and this"
-            assert rendered == 6
+            assert visible == 4, f"Expected 4 visible words (Keep this and this), got {visible}"
+            assert rendered == 6, f"Expected 6 rendered words, got {rendered}"
 
     def test_excludes_strike_tag(self, mock_site):
         """<strike> struck-through text is excluded from visible count."""
         html = "<p>Valid <strike>invalid</strike> text.</p>"
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Valid text"
-            assert rendered == 3
+            assert visible == 2, f"Expected 2 visible words (Valid text), got {visible}"
+            assert rendered == 3, f"Expected 3 rendered words, got {rendered}"
 
     def test_excludes_del_tag(self, mock_site):
         """<del> deleted text is excluded from visible count."""
         html = "<p>Current <del>old version</del> text.</p>"
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Current text"
-            assert rendered == 4
+            assert visible == 2, f"Expected 2 visible words (Current text), got {visible}"
+            assert rendered == 4, f"Expected 4 rendered words, got {rendered}"
 
     def test_excludes_text_decoration_line_through(self, mock_site):
         """Text with text-decoration:line-through is excluded from visible count."""
@@ -229,8 +229,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Normal text"
-            assert rendered == 3
+            assert visible == 2, f"Expected 2 visible words (Normal text), got {visible}"
+            assert rendered == 3, f"Expected 3 rendered words, got {rendered}"
 
     # UI element tests
 
@@ -242,8 +242,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 3  # "Article content here"
-            assert rendered == 5
+            assert visible == 3, f"Expected 3 visible words (Article content here), got {visible}"
+            assert rendered == 5, f"Expected 5 rendered words, got {rendered}"
 
     def test_excludes_contentSub(self, mock_site):
         """div#contentSub is excluded from visible count."""
@@ -253,8 +253,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Main text"
-            assert rendered == 4
+            assert visible == 2, f"Expected 2 visible words (Main text), got {visible}"
+            assert rendered == 4, f"Expected 4 rendered words, got {rendered}"
 
     def test_excludes_jump_to_nav(self, mock_site):
         """div#jump-to-nav is excluded from visible count."""
@@ -264,8 +264,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Content here"
-            assert rendered == 5
+            assert visible == 2, f"Expected 2 visible words (Content here), got {visible}"
+            assert rendered == 5, f"Expected 5 rendered words, got {rendered}"
 
     def test_excludes_localcomments(self, mock_site):
         """span.localcomments is excluded from visible count."""
@@ -275,8 +275,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Statement text"
-            assert rendered == 5
+            assert visible == 2, f"Expected 2 visible words (Statement text), got {visible}"
+            assert rendered == 5, f"Expected 5 rendered words, got {rendered}"
 
     # Error message tests
 
@@ -288,8 +288,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Normal content"
-            assert rendered == 6
+            assert visible == 2, f"Expected 2 visible words (Normal content), got {visible}"
+            assert rendered == 6, f"Expected 6 rendered words, got {rendered}"
 
     # Talk page quote template tests ({{tq}}, {{tqb}})
 
@@ -305,8 +305,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 4  # "Before quote after quote"
-            assert rendered == 7
+            assert visible == 4, f"Expected 4 visible words (Before quote after quote), got {visible}"
+            assert rendered == 7, f"Expected 7 rendered words, got {rendered}"
 
     def test_excludes_talkquote_class(self, mock_site):
         """{{tqb}} template output (.talkquote) is excluded from visible count.
@@ -321,8 +321,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 4  # "Before block" + "After block"
-            assert rendered == 7
+            assert visible == 4, f"Expected 4 visible words (Before/After block), got {visible}"
+            assert rendered == 7, f"Expected 7 rendered words, got {rendered}"
 
     def test_excludes_inline_quote_talk_italic(self, mock_site):
         """{{tqi}} template output (.inline-quote-talk-italic) is handled.
@@ -336,8 +336,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Normal text"
-            assert rendered == 4
+            assert visible == 2, f"Expected 2 visible words (Normal text), got {visible}"
+            assert rendered == 4, f"Expected 4 rendered words, got {rendered}"
 
     # Timestamp removal tests
 
@@ -348,7 +348,7 @@ class TestCountRenderedVisible:
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # Timestamp tokens: "12:34", "15", "January", "2024", "UTC" = 5 tokens
             # After _TS_RE removal, we should have: "Comment text more text" = 4 words
-            assert visible == 4
+            assert visible == 4, f"Expected 4 visible words (Comment text more text), got {visible}"
 
     def test_removes_multiple_timestamps(self, mock_site):
         """Multiple timestamps are all removed."""
@@ -357,7 +357,7 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 3  # "First second third"
+            assert visible == 3, f"Expected 3 visible words (First second third), got {visible}"
 
     # Edge cases
 
@@ -366,16 +366,16 @@ class TestCountRenderedVisible:
         html = ""
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 0
-            assert rendered == 0
+            assert visible == 0, f"Expected 0 visible words for empty content, got {visible}"
+            assert rendered == 0, f"Expected 0 rendered words for empty content, got {rendered}"
 
     def test_whitespace_only(self, mock_site):
         """Whitespace-only content produces zero counts."""
         html = "   \n\t\n   "
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 0
-            assert rendered == 0
+            assert visible == 0, f"Expected 0 visible words for whitespace-only, got {visible}"
+            assert rendered == 0, f"Expected 0 rendered words for whitespace-only, got {rendered}"
 
     def test_nested_exclusions(self, mock_site):
         """Nested excluded elements are properly handled."""
@@ -387,8 +387,8 @@ class TestCountRenderedVisible:
         """
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
-            assert visible == 2  # "Outer text"
-            assert rendered == 6
+            assert visible == 2, f"Expected 2 visible words (Outer text), got {visible}"
+            assert rendered == 6, f"Expected 6 rendered words, got {rendered}"
 
     def test_multiple_exclusion_types(self, mock_site):
         """Multiple different exclusion types in same content."""
@@ -401,9 +401,9 @@ class TestCountRenderedVisible:
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # Visible: "Statement with and a reference" = 5 words
-            assert visible == 5
+            assert visible == 5, f"Expected 5 visible words, got {visible}"
             # Rendered: Statement with struck text and a reference Ref content Hidden content Quoted text = 13
-            assert rendered == 13
+            assert rendered == 13, f"Expected 13 rendered words, got {rendered}"
 
     def test_visible_tokens_filter_non_alphanumeric(self, mock_site):
         """Tokens without alphanumeric characters are filtered from visible count."""
@@ -411,7 +411,7 @@ class TestCountRenderedVisible:
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # "--" should be filtered out, so visible = 4
-            assert visible == 4
+            assert visible == 4, f"Expected 4 visible words (non-alphanumeric filtered), got {visible}"
 
 
 class TestCaching:
@@ -460,8 +460,8 @@ class TestCaching:
                     mock_site, "any wikitext"
                 )
 
-                assert visible == 42
-                assert rendered == 50
+                assert visible == 42, f"Expected cached visible value 42, got {visible}"
+                assert rendered == 50, f"Expected cached rendered value 50, got {rendered}"
                 mock_render.assert_not_called()
 
     def test_caches_computed_value(self):
@@ -555,9 +555,9 @@ class TestRealisticWikipediaHTML:
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # Visible: "This is a test And this is after" = 8 words
             # (quoted text excluded, CSS in style tag excluded since it has no alphanumeric-only tokens)
-            assert visible == 8
+            assert visible == 8, f"Expected 8 visible words (quoted text excluded), got {visible}"
             # Rendered includes everything including CSS content tokens
-            assert rendered == 21
+            assert rendered == 21, f"Expected 21 rendered words (all content), got {rendered}"
 
     def test_real_tqb_template_html(self, mock_site):
         """Test with actual HTML output from {{tqb}} template."""
@@ -569,9 +569,9 @@ class TestRealisticWikipediaHTML:
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # Visible: "Before quote After quote" = 4 words
-            assert visible == 4
+            assert visible == 4, f"Expected 4 visible words (block quote excluded), got {visible}"
             # Rendered: all 9 words
-            assert rendered == 9
+            assert rendered == 9, f"Expected 9 rendered words, got {rendered}"
 
     def test_real_reflist_html(self, mock_site):
         """Test with actual HTML output from {{reflist}} template."""
@@ -585,9 +585,9 @@ class TestRealisticWikipediaHTML:
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # Visible: "Main text with a reference" = 5 words (reference excluded)
             # Note: [1] inside sup.reference is kept but filtered as non-word
-            assert visible == 5
+            assert visible == 5, f"Expected 5 visible words (reference excluded), got {visible}"
             # Rendered: Main text with a reference 1 Reference content here = 9
-            assert rendered == 9
+            assert rendered == 9, f"Expected 9 rendered words, got {rendered}"
 
     def test_real_collapse_template_html(self, mock_site):
         """Test with actual HTML output from {{collapse}} template."""
@@ -601,7 +601,7 @@ class TestRealisticWikipediaHTML:
         with patch.object(bot, "_api_render", return_value=html):
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # Visible: "Normal text here More normal text" = 6 words
-            assert visible == 6
+            assert visible == 6, f"Expected 6 visible words (collapsed excluded), got {visible}"
 
     def test_complex_statement_with_multiple_exclusions(self, mock_site):
         """Test a realistic statement combining multiple exclusion types."""
@@ -620,7 +620,7 @@ class TestRealisticWikipediaHTML:
             # "I am making a statement about policy The template says which is relevant [1]"
             # The visible token filter will include "relevant.[1]" as one token with alphanumeric
             # = 13 tokens (including the ref marker attached to "relevant")
-            assert visible == 13
+            assert visible == 13, f"Expected 13 visible words (multiple exclusions), got {visible}"
 
     def test_statement_with_timestamp_signature(self, mock_site):
         """Test that timestamps in signatures are properly removed."""
@@ -633,4 +633,4 @@ class TestRealisticWikipediaHTML:
             visible, rendered = bot._count_rendered_visible(mock_site, "ignored")
             # After timestamp removal: "I support this proposal for the following reasons Example talk"
             # Note: "14:30", "25", "January", "2024", "(UTC)" are part of timestamp pattern
-            assert visible == 10
+            assert visible == 10, f"Expected 10 visible words (timestamp removed), got {visible}"

@@ -1,3 +1,11 @@
+<!--
+This file contains content from https://en.wikipedia.org/wiki/Wikipedia:Arbitration/Requests/Enforcement
+captured on 2026-01-31 for use as a test fixture.
+
+This content is licensed under the Creative Commons Attribution-ShareAlike 4.0 License.
+See https://en.wikipedia.org/w/index.php?title=Wikipedia:Arbitration/Requests/Enforcement&action=history
+for attribution to the original authors.
+-->
 <noinclude>{{Redirect|WP:AE||WP:AE (disambiguation)}}
 __NEWSECTIONLINK__</noinclude><!--
 --><includeonly>={{anchor|toptoc}}[[Wikipedia:Arbitration/Requests/Enforcement|Requests for enforcement]]=</includeonly>

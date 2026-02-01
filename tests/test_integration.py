@@ -9,6 +9,7 @@ Mark these tests with @pytest.mark.integration to run separately from unit tests
 Run with: pytest -m integration
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,9 @@ from pywikibot.site import APISite
 
 # Import the module under test
 import bot
+
+# Delay between API calls to avoid rate limiting (in seconds)
+API_DELAY = 0.5
 
 # Load saved page fixtures
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -41,10 +45,24 @@ def site() -> APISite:
 
 
 @pytest.fixture(scope="module")
-def cache():
-    """Initialize the cache for integration tests."""
-    bot.CACHE = bot.WordCountCache(state_dir="/tmp")
-    return bot.CACHE
+def cache(tmp_path_factory):
+    """Initialize the cache for integration tests.
+
+    Uses a temporary directory for the cache to avoid conflicts and ensure
+    cross-platform compatibility. Restores the original cache after tests.
+    """
+    old_cache = bot.CACHE
+    tmp_dir = tmp_path_factory.mktemp("wordcount_cache")
+    bot.CACHE = bot.WordCountCache(state_dir=str(tmp_dir))
+    yield bot.CACHE
+    bot.CACHE = old_cache
+
+
+@pytest.fixture(autouse=True)
+def api_rate_limit():
+    """Add a small delay after each test to avoid Wikipedia API rate limiting."""
+    yield
+    time.sleep(API_DELAY)
 
 
 @pytest.mark.integration
@@ -63,7 +81,7 @@ class TestTemplateRendering:
 
         html = result["parse"]["text"]["*"]
         assert "inline-quote-talk" in html, "{{tq}} should produce .inline-quote-talk class"
-        assert "quoted text" in html
+        assert "quoted text" in html, "{{tq}} should preserve the quoted content"
 
     def test_tqb_template_produces_talkquote_class(self, site):
         """Verify {{tqb}} template renders with .talkquote class."""
@@ -77,7 +95,7 @@ class TestTemplateRendering:
 
         html = result["parse"]["text"]["*"]
         assert "talkquote" in html, "{{tqb}} should produce .talkquote class"
-        assert "block quoted text" in html
+        assert "block quoted text" in html, "{{tqb}} should preserve the quoted content"
 
     def test_reflist_produces_references_class(self, site):
         """Verify {{reflist}} renders with .references class."""
@@ -162,7 +180,7 @@ class TestWordCountingWithRealAPI:
         # "Main text here" = 3 visible words
         assert visible == 3, f"Expected 3 visible words, got {visible}"
         # Rendered includes reference content
-        assert rendered >= 3
+        assert rendered >= 3, f"Rendered should include reference content, got {rendered}"
 
     def test_struck_text_excluded_from_visible_count(self, site, cache):
         """Struck-through text should be excluded from visible word count."""
@@ -225,8 +243,8 @@ class TestTitleContextMatters:
         html = result["parse"]["text"]["*"]
 
         # Should have the proper class, not an error
-        assert "inline-quote-talk" in html
-        assert "error" not in html.lower() or "class=\"error\"" not in html
+        assert "inline-quote-talk" in html, "{{tq}} on talk page should produce .inline-quote-talk class"
+        assert "error" not in html.lower() or "class=\"error\"" not in html, "{{tq}} on talk page should not produce an error"
 
     def test_tq_on_article_page_produces_error(self, site, cache):
         """{{tq}} on an article page produces an error message instead of quoted text.
@@ -252,7 +270,7 @@ class TestTitleContextMatters:
         # On article pages, {{tq}} produces an error message
         assert "error" in html.lower(), "{{tq}} on article pages should show an error"
         # The quoted text is NOT rendered - instead we get the error message
-        assert "only for quoting in talk and project pages" in html
+        assert "only for quoting in talk and project pages" in html, "{{tq}} error message should explain it's for talk/project pages only"
 
 
 @pytest.mark.integration
@@ -298,7 +316,7 @@ class TestAEPageFixture:
         html = result["parse"]["text"]["*"]
         assert len(html) > 1000, "Rendered HTML should have content"
         # Should not have parser errors
-        assert "mw-parser-output" in html
+        assert "mw-parser-output" in html, "Rendered HTML should have mw-parser-output wrapper"
 
     def test_ae_page_tq_exclusion(self, site, cache, ae_page_wikitext):
         """Verify {{tq}} templates in AE page are excluded from visible count.
