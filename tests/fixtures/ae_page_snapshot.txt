@@ -1,0 +1,281 @@
+<!--
+This file contains content from https://en.wikipedia.org/wiki/Wikipedia:Arbitration/Requests/Enforcement
+captured on 2026-01-31 for use as a test fixture.
+
+This content is licensed under the Creative Commons Attribution-ShareAlike 4.0 License.
+See https://en.wikipedia.org/w/index.php?title=Wikipedia:Arbitration/Requests/Enforcement&action=history
+for attribution to the original authors.
+-->
+<noinclude>{{Redirect|WP:AE||WP:AE (disambiguation)}}
+__NEWSECTIONLINK__</noinclude><!--
+--><includeonly>={{anchor|toptoc}}[[Wikipedia:Arbitration/Requests/Enforcement|Requests for enforcement]]=</includeonly>
+<noinclude>{{Noticeboard links|style=width:100%; border:2px ridge #CAE1FF; margin:2px 0;|groupstyle=background-color:#CAE1FF;}}<!--da
+-->{{User:MiszaBot/config
+|archiveheader = {{Arbitration enforcement/Archive navbox}}|maxarchivesize = 200K
+|counter =364
+|minthreadsleft = 0
+|minthreadstoarchive = 1
+|algo = old(100d)
+|archive = Wikipedia:Arbitration/Requests/Enforcement/Archive%(counter)d
+}}
+{{User:HBC Archive Indexerbot/OptIn
+|target=Wikipedia:Arbitration/Requests/Enforcement/Archive index
+|mask=Wikipedia:Arbitration/Requests/Enforcement/Archive<#>
+|leading_zeros=0
+|indexhere=no
+|template=Wikipedia:Arbitration/Requests/Enforcement/Archive index/Template
+}}</noinclude>{{Wikipedia:Arbitration/Requests/Enforcement/Header}}
+{{no admin backlog}}
+
+== Quick enforcement requests ==
+
+{{Wikipedia:Arbitration/Requests/Enforcement/Quick requests header}}
+
+=== Example request ===
+* {{pagelinks|WP:Example}}
+'''One-revert restriction''': Changes on this page are frequently reverted back and forth. [[User:Example]] ([[User talk:Example|talk]]) 16:13, 5 December 2025 (UTC)
+:{{not done}}: This doesn't involve any [[WP:CTOP#List of contentious topics|contentious topic]], so an admin doesn't have discretion to impose a [[WP:1RR|one-revert restriction]] here. ~ Jenson ([[User:SilverLocust|SilverLocust]] [[User talk:SilverLocust|💬]]) 16:13, 5 December 2025 (UTC)
+
+=== Talk:Textbooks in the Israeli–Palestinian conflict ===
+* {{pagelinks|Talk:Textbooks in the Israeli–Palestinian conflict}}
+'''Requested action''': Just a quick request that an administrator remove the duplicate ARBPIA talk notice. I imagine this could probably be done myself, but the template technically says {{tq|any marking, template, or editnotice may be removed only by an uninvolved administrator.}}, so if someone could do so, would be appreciated. [[User:EggRoll97|EggRoll97]] <sup>([[User_talk:EggRoll97|talk]]) </sup> 04:17, 15 January 2026 (UTC)
+
+:{{done}} [[User:Asilvering|asilvering]] ([[User talk:Asilvering|talk]]) 05:15, 15 January 2026 (UTC)
+
+==Rap no Davinci==
+{{hat|No action. [[User:Arcticocean|<span style="color:#5A4FCF">Arctic'''ocean'''&nbsp;■</span>]] 19:49, 28 January 2026 (UTC)}}
+<small>''This request may be declined without further action if insufficient or unclear information is provided in the "Request" section below. <br />Requests may not exceed 500 [[Word count#Software|words]] and 20 diffs (not counting required information), except by permission of a reviewing administrator.''</small>
+
+===Request concerning Rap no Davinci===
+; User who is submitting this request for enforcement : {{userlinks|Kowal2701}} 22:56, 17 January 2026 (UTC)
+
+; User against whom enforcement is requested : {{userlinks|Rap no Davinci}}<p>{{ds/log|Rap no Davinci}}</p>
+
+<!--- Here and at the end, replace USERNAME with the username of the editor against whom you request enforcement. --->
+
+;Sanction or remedy to be enforced: [[WP:PIA]]
+<!--- Link to the sanction or remedy that you ask to be enforced --->
+
+; [[WP:DIFF|Diffs]] of edits that violate this sanction or remedy, and an explanation ''how'' these edits violate it :
+<!-- Supply diffs as evidence here, and explain why they require arbitration enforcement. Any allegation not supported by a diff is usually disregarded. You may also link to an archived version of long discussions instead of supplying very many diffs. Enforcement requests and statements in response to them may not exceed 500 words and 20 diffs, except by permission of a reviewing administrator. Non-compliant contributions may be removed or shortened by administrators. Disruptive contributions such as [[WP:NPA|personal attacks]], or groundless or [[vexatious]] complaints, may result in blocks or other sanctions.-->
+See page history of [[Holocaust survivors and descendants supporting Palestine]], an article they created 11 Jan. Also see {{u|NicheSports}}' analysis of the content added [https://en.wikipedia.org/wiki/Talk:Holocaust_survivors_and_descendants_supporting_Palestine#c-NicheSports-20260117220800-WP:V_and_WP:OR_issues,_likely_LLM-generated_content] which indicates either a violation of [[WP:NEWLLM]], or big [[WP:CIR]] issues re [[WP:V]] and [[WP:RS]]. They were informally warned about LLM-use on [[User talk:Rap no Davinci#October 2025|11 Oct 2025]] and then received a formal warning at AE on 22 Nov 2025.
+
+; Diffs of previous relevant sanctions, if any : 
+<!-- To the extent it may be relevant, link to previous sanctions such as blocks or topic bans.-->
+#[https://en.wikipedia.org/w/index.php?title=User_talk:Rap_no_Davinci&diff=prev&oldid=1323541796 22 November 2025] Warning for problematic LLM-use in PIA
+
+;If [[Wikipedia:Contentious topics|contentious topics restrictions]] are requested, supply evidence that the user is aware of them (see [[WP:CTOP#Awareness of contentious topics]]):
+<!-- The following are examples. Write "Not applicable" or similar if this is not a discretionary sanctions enforcement request. Otherwise, fill out at least one line that applies and delete the rest. If you wish to request discretionary sanctions but none of these situations apply, issue an alert yourself instead of making this request, see the link above. -->
+[https://en.wikipedia.org/w/index.php?title=User_talk:Rap_no_Davinci&diff=prev&oldid=1323542530]
+; Additional comments by editor filing complaint :
+<!-- Add any further comment here -->
+[https://en.wikipedia.org/w/index.php?title=Talk:Jewish_pro-Palestinian_activism&diff=prev&oldid=1333075493 This comment] in the merge discussion also seems LLM-generated and cites [[WP:SNG]] for some reason (?) [[User:Kowal2701|Kowal2701]] ([[User talk:Kowal2701|talk]]) 23:09, 17 January 2026 (UTC)
+
+:Raskolnikov.Rev comment below misrepresents mine in the discussion, and while blunt and potentially uncivil it has nothing to do with AGF [[User:Kowal2701|Kowal2701]] ([[User talk:Kowal2701|talk]]) 11:08, 19 January 2026 (UTC)
+:{{u|Newslinger}}, usually I'd agree, but they've shown a serious lack of understanding of core policies on an incredibly controversial and sensitive/nuanced topic. I'd rather they honed their editing skills outside of PIA first [[User:Kowal2701|Kowal2701]] ([[User talk:Kowal2701|talk]]) 01:27, 26 January 2026 (UTC)
+
+; Notification of the user against whom enforcement is requested : 
+<!-- Please notify the user against whom you request enforcement of the request (you may use {{subst:AE-notice|thread name}}), and then replace this comment with a diff of the notification. The request will normally not be processed otherwise. -->
+[https://en.wikipedia.org/w/index.php?title=User_talk:Rap_no_Davinci&diff=prev&oldid=1333461522]
+
+<!--- In the line below, replace USERNAME with the username of the editor against whom you request enforcement. --->
+===Discussion concerning Rap no Davinci===
+<small>''Statements must be made in separate sections. They may not exceed 500 [[Word count#Software|words]] and 20 diffs, except by permission of a reviewing administrator.<br />Administrators may remove or shorten noncompliant statements. Disruptive contributions may result in blocks.''</small>
+
+====Statement by Rap no Davinci====
+{{ACWordStatus|page=AE|section=Rap no Davinci|user=Rap no Davinci}}
+{{ApprovedWordLimit|words=1024|sig=—&nbsp;'''''[[User:Newslinger|<span style="color:#536267;">Newslinger</span>]]'''&nbsp;<small>[[User talk:Newslinger#top|<span style="color:#708090;">talk</span>]]</small>'' 09:12, 19 January 2026 (UTC)}}
+
+I [https://en.wikipedia.org/w/index.php?title=User_talk:Rap_no_Davinci&oldid=1306585149#Question_re:_AI have] always [https://en.wikipedia.org/wiki/User%20talk:Rap%20no%20Davinci been] transparent about my use of LLM, when I stated that I can continue editing without it, I meant it. The article in question was not generated/created using LLM, it’s entirely my work and took me several days to draft the initial version. For "See page history [of the article]", it would actually help you see the amount of effort it took as a person to add few more sentences. From the [https://en.wikipedia.org/w/index.php?title=Holocaust%20survivors%20and%20descendants%20supporting%20Palestine&oldid=1332329558 initial version] to the [https://en.wikipedia.org/w/index.php?title=Holocaust_survivors_and_descendants_supporting_Palestine&diff=prev&oldid=1332362953 final expansion], which included additional sentences and sources, I spent HOURS in reading, analyzing, and summarizing information in the sources. LLM would've taken few minutes, that's a human being behind their screen putting in real work. 
+
+Does that mean I didn't make any mistakes? Absolutely not! Especially given the sensitive nature of the subject, but working on it is me [https://en.wikipedia.org/wiki/Wikipedia:Be_bold being brave] (and prepared for the pushback). There are likely phrases that could seem biased or could misrepresent the original sources, of course UNINTENTIONALLY. That's why [https://en.wikipedia.org/wiki/Wikipedia:Ownership_of_content we don't own articles] we create, and the community-driven work we do is what make this platform so special. Everyone is welcome to contribute to the article and make it better. (I am working on a section related to reception and criticism to address the tag of Unbalanced).
+
+For [https://en.wikipedia.org/wiki/Talk:Jewish_pro-Palestinian_activism#Merge the comment on merge], I, once again, didn't use LLM, and for the WP:SNG, (as I understand it), is for the article [[Holocaust survivors and descendants supporting Palestine]] as a very specific topic, very different and should not to be merged with [[Jewish pro-Palestinian activism]] just because they "overlap" in one singular general fact: both cover pro-Palestine activism by people of the Jewish faith.
+
+Some of the criticism is legit (about 10% of the article needs improvement, mostly related to wording, I will address some of them) and I probably made some mistakes, please help make the article better. Thanks! <!-- Template:Unsigned --><small class="autosigned">—&nbsp;Preceding [[Wikipedia:Signatures|unsigned]] comment added by [[User:Rap no Davinci|Rap no Davinci]] ([[User talk:Rap no Davinci#top|talk]] • [[Special:Contributions/Rap no Davinci|contribs]]) 14:11, 18 January 2026 (UTC)</small>
+
+* '''Reply:''' Thanks for extending my word limit, I'll do my best to address all points raised against me/the article.
+For NicheSports' comment is what I referred to as "10% legit criticism", mostly related to wording.
+In relation to sources and OR:
+"A foundational principle for many Holocaust survivors ... " As the leading sentence, this is supported by the whole subsection of '"Never Again" applies to all people', as the next line is "They argue that the slogan "Never Again" must not be exclusive to Jews." and later "as descendants, we recognize that genocide makes no one safer." and so on.
+
+The same with "The use of Holocaust memory in discussions of Israeli military...", followed by "Holocaust survivor Agnes Kory stated that she was "outraged and deeply insulted by the Holocaust being used as an excuse for Israel's relentless war against the Palestinian people," … and much later “victims of the Nazis who were outraged that Israel used their histories to justify assaults on Palestinians.”
+
+for "(such as siege, mass displacement, and high civilian casualties)...", I added this as explanation for readers as these are already established "facts" supported by standalone articles on Wiki [[Siege of Gaza City]], [[Blockade of the Gaza Strip]]; for mass causalities [[Gaza genocide]], [[Casualties of the Gaza war]]. Is this a case of OR? From my pov, this is explanation [[WP:SYNNOT]]. Still easy to fix (as has already been).
+
+for "Many of these individuals distinguish between Judaism and political Zionism…" Again, this is supported by the whole subsection of "Anti-Zionism is not antisemitism", take "Organizations they associate with ... argue that the foundational ideology of Israel leads to the oppression of the people of Palestine" and "Signatories to the 2014 letter ...  object to the characterization of pro-Palestine activism as inherently antisemitic, pointing to their own Jewish identity ..." as examples, all supporting that sentence.
+
+for "Organizations they associate with … argue that the foundational ideology of Israel leads to the oppression of the people of Palestine." I should've clarified the ideology of "self-defense" and criticizing the state = criticizing the Jewish people = calling for another Holocaust .. excepts the source cited "victims of the Nazis who were outraged that Israel used their histories to justify assaults on Palestinians" and "Israel's self-defense is very lopsided. Gazans are a population living in a constant state of siege. They've been driven from their homes, into decades-long refugee camps." = being oppressed. (the sentence is vague more than OR, cuz “what ideology?”)
+
+for "A German-born Jewish-American … known for her work with the International Solidarity Movement in support of the Palestinian cause." I rewrote that from her Wiki page, the lede [[Hedy Epstein]], not OR
+
+For "Their stance is rooted in the belief that lessons from the Holocaust demand opposition to all forms of oppression …” Not sure how is this OR, it's the article itself, multiple cited survivors used their experiences as a base to vocalize support for Palestine and opposition to Israel!!
+
+Currently, 2 editors (R.Rev & Arcticocean) have examined the sources and found no issues. Which was the main problem with my prior LLM mis/use. For the “typical LLM” phrases like ‘rooted in’ and ‘foundational principle’, etc. As a non-native English speaker, these look very standard formal phrases, appropriate for this encyclopedia. Some of these were translations from my native language to English using Google Translate (when I was unsure how to express some info or summaries). It took me serious days to write this article. It’d be seriously unwise of me to write an article related the most debated subject in the past 2 years (on-and-off Wiki), with a warning against me, using LLM, when I expected pushback against the article as there’re editors with strong views for/against the premise. 
+
+Having a “history” of mis/using LLM makes the accusation easy to stick, but I maintain my position that I stopped using it for creating/editing on Wikipedia since the last AE, even prior to the warning. <!-- Template:Unsigned --><small class="autosigned">—&nbsp;Preceding [[Wikipedia:Signatures|unsigned]] comment added by [[User:Rap no Davinci|Rap no Davinci]] ([[User talk:Rap no Davinci#top|talk]] • [[Special:Contributions/Rap no Davinci|contribs]]) 13:49, 20 January 2026 (UTC)</small>
+
+* '''2nd Reply:''' I didn’t know about that Google Translate update. I will disclose when I use it. For the recommendation about creating WP:CT/A-I articles, I have no objection. Thanks for handling this. (brief due to word limit) [[User:Rap no Davinci|Rap no Davinci]] ([[User talk:Rap no Davinci|talk]]) 10:33, 22 January 2026 (UTC)
+
+====Statement by Raskolnikov.Rev====
+I reviewed the source analysis cited for filing this case and [https://en.wikipedia.org/wiki/Talk:Holocaust_survivors_and_descendants_supporting_Palestine#c-Raskolnikov.Rev-20260119100800-NicheSports-20260117220800 wholeheartedly disagree with it]. All the content is backed by the cited sources and there's no WP:OR involved or use of GUNREL that I can see. There's some improvements that can be made with attribution, particularly in one case citing a weak source that links to other sources containing the content, but that content was already backed up by other sources added to the body and not at all controversial. In my view it's all rather minor and easily resolvable via regular BRD and editing. Not sure why this was so quickly escalated to AE. [[User:Raskolnikov.Rev|Raskolnikov.Rev]] ([[User talk:Raskolnikov.Rev|talk]]) 10:36, 19 January 2026 (UTC)
+
+The filer responded to my providing a second opinion on the source analysis, as the original editor requested, [https://en.wikipedia.org/wiki/Talk:Holocaust_survivors_and_descendants_supporting_Palestine#c-Kowal2701-20260119102300-Raskolnikov.Rev-20260119100800 by saying] I shouldn't edit in the topic area either without substantively addressing anything I said. I don't find this helpful and it's not WP:AFG. [[User:Raskolnikov.Rev|Raskolnikov.Rev]] ([[User talk:Raskolnikov.Rev|talk]]) 10:44, 19 January 2026 (UTC)
+
+To briefly respond to NicheSports: As [https://en.wikipedia.org/wiki/Talk:Holocaust_survivors_and_descendants_supporting_Palestine#c-Raskolnikov.Rev-20260119112000-NicheSports-20260119110900 I noted on the talk], the example brought up as the supposedly most egregious instance of failing WP:V is actually the worst one to bring up: The [https://web.archive.org/web/20250916182814/https://www.nytimes.com/2009/12/30/world/middleeast/30egypt.html cited NYT piece] says the march [[Hedy Epstein]] participated in was organized by [[Gaza Freedom March]], which overlaps with the [[Free Gaza Movement]], which in turn overlaps with the [[International Solidarity Movement]]. Moreover, Hedy Epstein's BLP was linked, which states she was an activist in the ISM in the lede ''citing the same NYT source''. And it should not be removed there either as it is entirely uncontroversial and accurate material given Gaza Freedom March being a part of the broader ISM. [https://archive.freegaza.org/en/newsletterdec09.html Here is a newsletter] from the Free Gaza Movement with a statement from Epstein saying why she joined the Gaza Freedom March and a call to join the ISM at the end, and [https://www.salon.com/2016/05/27/activist_hedy_epstein_palestinian_rights_advocate_and_holocaust_survivor_dies_at_91/ here is the obituary I added] stating Epstein was active in the ISM and Free Gaza Movement. Even if NicheSport's concern that the ISM was not explicitly named in the NYT piece is valid, it could easily be resolved with this addition. This doesn't even warrant a revert, let alone an AE case. [[User:Raskolnikov.Rev|Raskolnikov.Rev]] ([[User talk:Raskolnikov.Rev|talk]]) 09:28, 24 January 2026 (UTC)
+
+====Statement by NicheSports====
+Can an admin independently and thoroughly review my analysis [https://en.wikipedia.org/w/index.php?title=Talk:Holocaust_survivors_and_descendants_supporting_Palestine&diff=prev&oldid=1333455638] before this case is closed? I believe that both Raskolnikov.Rev and RnD's analyses are unreliable. For evidence of this claim, see the 6th point of my analysis (the simplest, as it documents a black and white [[WP:V]] failure). In RR's talk page response [https://en.wikipedia.org/w/index.php?title=Talk:Holocaust_survivors_and_descendants_supporting_Palestine&diff=prev&oldid=1333718966] to my analysis, they state that it is "uncontroversial" that the text I highlighted was supported by the sourcing. This is objectively false; the organization "International Solidarity Movement" is never mentioned in the only source [https://web.archive.org/web/20250916182814/https://www.nytimes.com/2009/12/30/world/middleeast/30egypt.html]. Meanwhile, RnD stated at the AE thread that {{tqq|I rewrote that from her Wiki page, the lede [[Hedy Epstein]], not OR}}. This reflects an apparent serious misunderstanding of [[WP:V]]; content in articles must be supported by in-line sources, not assertions made in related wikipedia articles. This is the simplest example; I am confident that a reviewing admin will identify other issues, especially related to [[WP:PRIMARY]]. LLM detection is almost always probabilistic in nature (unless someone leaves a chatbot prompt/response). There is a high probability that RnD has repeatedly been dishonest about LLM use: at their talk page [https://en.wikipedia.org/w/index.php?title=User_talk:Rap_no_Davinci&diff=prev&oldid=1316249549][https://en.wikipedia.org/w/index.php?title=User_talk:Rap_no_Davinci&diff=prev&oldid=1316251584] re [[Draft:Nayda]] and at the prior AE thread [https://en.wikipedia.org/w/index.php?title=Wikipedia:Arbitration/Requests/Enforcement&diff=prev&oldid=1322678427]. See this analysis [https://en.wikipedia.org/w/index.php?title=Wikipedia:Arbitration/Requests/Enforcement&diff=prev&oldid=1321253631], which mostly explains my thinking re: the prior AE thread. Meanwhile, {{slink|Draft talk:Nayda#High likelihood unreviewed LLM-generated text}} speaks for itself. These probable prior issues make me skeptical of RnD's claims at this AE case to have only used machine assistance for translation purposes while creating the article in question. One more point: it is so much harder to address machine-assisted content in the PIA space because it gets edit warred back in [https://en.wikipedia.org/w/index.php?title=Holocaust_survivors_and_descendants_supporting_Palestine&diff=prev&oldid=1334093232][https://en.wikipedia.org/w/index.php?title=Holocaust_survivors_and_descendants_supporting_Palestine&diff=prev&oldid=1334100694] and people start arguing [https://en.wikipedia.org/w/index.php?title=Talk:Holocaust_survivors_and_descendants_supporting_Palestine&diff=prev&oldid=1333592169][https://en.wikipedia.org/w/index.php?title=Talk:Holocaust_survivors_and_descendants_supporting_Palestine&diff=prev&oldid=1333970682] about whether it is anti-semitic (this article isn't, of course - RR, RnD, and I all agree there). [[User:NicheSports|NicheSports]] ([[User talk:NicheSports|talk]]) 23:06, 23 January 2026 (UTC)
+
+:@[[User:Newslinger|Newslinger]] I didn't think that compliance with core content policies was a content issue, but understood on the rest and I am happy to drop this. I will also stop reviewing RnD's edits and will focus on LLM work outside of the PIA space. [[User:NicheSports|NicheSports]] ([[User talk:NicheSports|talk]]) 04:23, 25 January 2026 (UTC)
+
+===Result concerning Rap no Davinci===
+:''This section is to be edited only by uninvolved administrators. Comments by others will be moved to the sections above.''
+* {{re|Rap no Davinci}} There are seven bullet points in [[Special:GoToComment/c-NicheSports-20260117220800-WP:V_and_WP:OR_issues,_likely_LLM-generated_content|the initial comment]] of {{slink|Talk:Holocaust survivors and descendants supporting Palestine#WP:V and WP:OR issues, likely LLM-generated content}} that highlight seven excerpts from the text you added to the article in your first six edits ending [[Special:Permalink/1332362953|12:37, 11 January 2026]]. For each bullet point, could you please assess the text in question and explain in detail whether the content and the sources cited to support it are consistent with the [[WP:COPO|core content policies]] and the [[WP:RS|reliable sources guideline]]? I have extended your word limit to allow 700 words for your response. —&nbsp;'''''[[User:Newslinger|<span style="color:#536267;">Newslinger</span>]]'''&nbsp;<small>[[User talk:Newslinger#top|<span style="color:#708090;">talk</span>]]</small>'' 09:12, 19 January 2026 (UTC)
+** To clarify, I am still expecting a response from Rap no Davinci based on their own reasoning, written in their own words. —&nbsp;'''''[[User:Newslinger|<span style="color:#536267;">Newslinger</span>]]'''&nbsp;<small>[[User talk:Newslinger#top|<span style="color:#708090;">talk</span>]]</small>'' 10:46, 19 January 2026 (UTC)
+** {{pb}}{{re|Rap no Davinci}} Thank you for responding. You might not be aware of this, but [https://blog.google/products-and-platforms/products/search/gemini-capabilities-translation-upgrades/ as of December 2025], [[Google Translate]] uses Google's [[Gemini (language model)|Gemini]] LLM to handle part of its translation process. Other [[machine translation]] tools have started using LLMs in their implementations as well. Because of this, whenever you use Google Translate or another [[machine translation]] tool for editing, please disclose your use of that tool in your edit summary. (When you use machine translation in a discussion comment, please also make the disclosure in the comment itself.){{pb}}I see that your response here heavily focuses on whether the content you added corresponds to the sources you cited, but does not examine whether those sources are reliable or neutral. As the fourth bullet point from [[Special:GoToComment/c-NicheSports-20260117220800-WP:V_and_WP:OR_issues,_likely_LLM-generated_content|the article talk page comment]] pointed out, you cited [https://medium.com/@anjalilakra/why-do-holocaust-survivors-support-palestine-are-they-ok-e04ca36702fe a self-published article] from [[Medium (website)|Medium]] that was authored by [https://medium.com/@anjalilakra an individual] who does not appear to be a [[WP:EXPERTSPS|subject-matter expert]]. Please be more careful with your sourcing to ensure that your content is compliant with the [[WP:V|verifiability policy]].{{pb}}Based on the above, I believe Rap no Davinci should use the [[WP:AFC|Articles for Creation]] process to create any new article related to the [[WP:CT/A-I]] contentious topic, which would necessitate a review of the draft by another editor before it is published in article space. I state this as a recommendation, but would also support implementing this as a requirement if there is consensus that doing so would be necessary. —&nbsp;'''''[[User:Newslinger|<span style="color:#536267;">Newslinger</span>]]'''&nbsp;<small>[[User talk:Newslinger#top|<span style="color:#708090;">talk</span>]]</small>'' 18:57, 20 January 2026 (UTC)
+** {{pb}}{{re|NicheSports}} This noticeboard is only able to address misconduct, and content issues have to be resolved [[WP:SEEKHELP|through the proper channels]]. I agree that Rap no Davinci's phrasing and source selection in the article are both opinionated and in need of improvement, but this is something that can be corrected with further editing (or, for Rap no Davinci's future article creations, flagged by an [[WP:AFC|AfC review]] prior to publication). The standard for evidence on this noticeboard is higher than that of [[WP:ANI]] (because we focus more on specific diffs here instead of general impressions about an editor), and for reports regarding LLM misuse, I would prefer to see a higher-confidence [[WP:AISIGNS|sign of AI writing]] before advancing to a more serious behavioral restriction. —&nbsp;'''''[[User:Newslinger|<span style="color:#536267;">Newslinger</span>]]'''&nbsp;<small>[[User talk:Newslinger#top|<span style="color:#708090;">talk</span>]]</small>'' 04:12, 25 January 2026 (UTC)
+*** {{pb}}{{re|NicheSports}} Noncompliance with [[WP:COPO|core content policies]] is a behavioral issue if there is a [[WP:DE|disruptive]] pattern, or if the edits are egregious enough to clearly show that they were made in bad faith. I do expect {{u|Rap no Davinci}} to continue working on the article to address the critiques that you and others have posted on [[Talk:Holocaust survivors and descendants supporting Palestine|the article talk page]]. —&nbsp;'''''[[User:Newslinger|<span style="color:#536267;">Newslinger</span>]]'''&nbsp;<small>[[User talk:Newslinger#top|<span style="color:#708090;">talk</span>]]</small>'' 04:38, 25 January 2026 (UTC)
+** {{re|Kowal2701}} Rap no Davinci can see your advice here, but it is not enforceable without a stronger set of evidence. —&nbsp;'''''[[User:Newslinger|<span style="color:#536267;">Newslinger</span>]]'''&nbsp;<small>[[User talk:Newslinger#top|<span style="color:#708090;">talk</span>]]</small>'' 13:37, 26 January 2026 (UTC)
+* Further to Newslinger's request that Rap no Davinci respond to the seven points referenced, a detailed analysis of the sources was [[Talk:Holocaust_survivors_and_descendants_supporting_Palestine#c-Raskolnikov.Rev-20260119100800-NicheSports-20260117220800|posted by another user]]. I think it is fairly clear now that there is no source hallucination within the article, and therefore that RND had checked all LLM-generated assertions. What I think has to be addressed now is the undisclosed use of generative AI to write the prose of the article. The phrasing of the article makes clear, in my view, that it was substantially generated by AI. RND has denied this and says {{xt|the article in question was not generated/created using LLM}}. On a close reading of the article drafted, I have to disbelieve their denial. Many of the usual signs are present, e.g. use of imprecise weasel words ({{!xt|A foundational principle for many is the…}}) and human-impersonating editorialisation ({{!xt|Their stance is rooted in the belief…}}). RND was warned after the last AE report that they may receive a sitewide block in the event of further generative AI misuse. [[WP:LLMDISCLOSE|Failing to disclose LLM use is discouraged]] and [[WP:NEWLLM|writing new articles with them is not permitted]]. I would ask RND to comment on this. [[User:Arcticocean|<span style="color:#5A4FCF">Arctic'''ocean'''&nbsp;■</span>]] 17:45, 19 January 2026 (UTC)
+*:Assuming good faith, I am prepared to accept the explanation that this article was not AI-generated, despite appearing to have been. I also agree with Newslinger's recommendation to use AfC in future. As {{hidden ping|Rap no Davinci}}RND has now accepted that recommendation, I think we can treat that as a voluntary measure rather than a sanction, and I would close this enforcement request without formal action, provided no other admins have further concerns. RND, please continue to remember your recent AE warning regarding generative AI use in addition to the advice given in this AE request. [[User:Arcticocean|<span style="color:#5A4FCF">Arctic'''ocean'''&nbsp;■</span>]] 13:19, 22 January 2026 (UTC)
+*:The statements (and supplementary comments) being offered in this request are not introducing new or actionable information. As all relevant issues have been addressed and considered, I think this request should now be closed, with 'no action' as the outcome for the reasons I have already given. Unless any uninvolved admins object in the next 48 hours, I will close the request with that as the outcome. [[User:Arcticocean|<span style="color:#5A4FCF">Arctic'''ocean'''&nbsp;■</span>]] 20:07, 26 January 2026 (UTC)
+{{hab}}
+
+== Glebushko0703 ==
+{{collapse top|Filer was a sock. [[User:Izno|Izno]] ([[User talk:Izno|talk]]) 04:15, 29 January 2026 (UTC)}}
+<small>''This request may be declined without further action if insufficient or unclear information is provided in the "Request" section below. <br />Requests may not exceed 500 [[Word count#Software|words]] and 20 diffs (not counting required information), except by permission of a reviewing administrator.''</small>
+
+=== Request concerning Glebushko0703 ===
+
+; User who is submitting this request for enforcement : {{userlinks|SophiaJustice59}} 17:24, 28 January 2026 (UTC)
+
+; User against whom enforcement is requested : {{userlinks|Glebushko0703}}<p>{{ds/log|Glebushko0703}}</p>
+
+;Sanction or remedy to be enforced:
+# [[WP:CT/EE]]
+# [[WP:CT/BLP]]
+
+This is the first time I made an AE request. Pardon me for any mistakes. Recently, I came across Glebushko0703 in some articles. I initially did not wish to get involved. However, after a brief encounter with him in relation to [[List of pro-Russian political parties]], I looked at his activity in adjacent articles, noticing issues that caused legitimate concerns.
+
+=== Suspected violations after his recent block ===
+
+==== [[WP:TE]] and [[WP:AOBF]] in [[List of pro-Russian political parties]] ====
+
+Glebushko0703 removed multiple articles from [[List of pro-Russian political parties#See also|See also]] ([https://en.wikipedia.org/w/index.php?title=List_of_pro-Russian_political_parties&diff=prev&oldid=1334769670 diff1]), claiming {{tq|fixed non neutral "see also"}} without explaining how it was "non-neutral". [[User:MaxPlays|MaxPlays]] reverted him ([https://en.wikipedia.org/w/index.php?title=List_of_pro-Russian_political_parties&diff=next&oldid=1334769670 diff2]). Glebushko0703 reverted back, alleging {{tq|none of these "see also" have anything to do with most of these parties. clearly pov:push}} ([https://en.wikipedia.org/w/index.php?title=List_of_pro-Russian_political_parties&diff=next&oldid=1334978284 diff3]) without explaining how it was "clearly pov:push" ''[sic]'', followed by another unexplained revert ([https://en.wikipedia.org/w/index.php?title=List_of_pro-Russian_political_parties&diff=next&oldid=1335040713 diff4]). 
+
+On the [[Talk:List of pro-Russian political parties#See also|Talk page]], Glebushko0703 insinuated that [[Russian hybrid warfare]], [[Russosphere]], [[Russophilia]], [[Putinism]] and [[Eurasianism]] were "vaguely nationalistic concepts" ([https://en.wikipedia.org/wiki/Talk:List_of_pro-Russian_political_parties#c-Glebushko0703-20260127050700-See_also diff5]), which is objectively false. [[User:TylerBurden|TylerBurden]] explained how the articles in See also were relevant and [[WP:DUE]]-compliant ([https://en.wikipedia.org/wiki/Talk:List_of_pro-Russian_political_parties#c-TylerBurden-20260127144400-Glebushko0703-20260127050700 diff6]). Glebushko0703 refused to listen, arguing {{tq|You can't add "LBGTQ" to "see also" of 4 Non Blondes for examples}}, which is [[Wikipedia:Arguments to avoid in deletion discussions#Individual merit|totally irrelevant]], and {{tq|in fact a lot of them just want good relationship with current Russian government to benefit their own country, like german AfD for example.}} without evidence ([https://en.wikipedia.org/wiki/Talk:List_of_pro-Russian_political_parties#c-Glebushko0703-20260127160600-TylerBurden-20260127144400 diff7]).
+
+Glebushko0703 apparently fails to assume good faith in their inclusion, treating neutral article names as "POV-pushing", nor has he been able to provide any policy basis. The only reasonable explanation for this is [[WP:JUSTDONTLIKEIT]], a problem he exhibits in editing several articles. 
+
+Glebushko0703 refuses to listen to others, alleging that the only reason he is disagreed with is that {{tq|You don't understand my point so you claim it as "bizzare".}} ([https://en.wikipedia.org/wiki/Talk:List_of_pro-Russian_political_parties#c-Glebushko0703-20260127171200-TylerBurden-20260127165900 diff8]), alongside his bludgeoning ([https://en.wikipedia.org/wiki/Talk:List_of_pro-Russian_political_parties#c-Glebushko0703-20260128091000-TylerBurden-20260128082300 diff9], [https://en.wikipedia.org/wiki/Talk:List_of_pro-Russian_political_parties#c-Glebushko0703-20260128104700-Czello-20260128104100 diff10], [https://en.wikipedia.org/wiki/Talk:List_of_pro-Russian_political_parties#c-Glebushko0703-20260128110400-Czello-20260128105600 diff11]). 
+
+==== [[WP:CIR]] issues in [[Holocaust denial]] ====
+
+Glebushko0703 removed a sourced statement ([https://en.wikipedia.org/w/index.php?title=Holocaust_denial&diff=prev&oldid=1333884955 diff12]) by claiming {{tq|This entire section is in fact bullsh*t, the book was published by a British publisher}} without explaining how the "British publisher" affects the statement's validity. The statement is sourced to a book of [[ABC-CLIO]] which is an American publisher. [[User:Sumanuil|Sumanuil]] reverted him, explaining {{tq|[[Jürgen Graf|Graf]]'s book wasn't.}} ([https://en.wikipedia.org/w/index.php?title=Holocaust_denial&diff=next&oldid=1333884955 diff13])
+
+Glebushko0703 reverted within an hour, claiming {{tq|Manual Revert. Please read open the source. Bloomsbury Academic is an English publisher. There's no source to support the claim that the book was published in Russia, let alone that holocauts denial is "freely available".}} ([https://en.wikipedia.org/w/index.php?title=Holocaust_denial&diff=next&oldid=1333886750 diff14]) as if English publishers are unreliable. 
+
+Sumanuil reverted him, reiterating {{tq|No one is saying that "Holocaust Denial As An International Movement" was published in Russia, because it is about the topic, not an example of it.}} ([https://en.wikipedia.org/w/index.php?title=Holocaust_denial&diff=next&oldid=1333887413 diff15]) It is clear to the audience that Sumanuil referred to [[Jürgen Graf]]'s book rather than ''Holocaust Denial as an International Movement'', but Glebushko0703 did not listen, nor had he provided any policy basis for his repeated removal.
+
+=== Violations before his recent block ===
+
+==== Edit warring in [[Estonia]], [[Kaja Kallas]] and [[Anti-Russian sentiment]] ====
+
+[https://en.wikipedia.org/w/index.php?title=Estonia&date-range-to=2025-12-31&tagfilter=&action=history diff16], [https://en.wikipedia.org/w/index.php?title=Kaja_Kallas&action=history&date-range-to=2025-12-08&tagfilter=&offset=&limit=100  diff17], [https://en.wikipedia.org/w/index.php?title=Anti-Russian+sentiment&date-range-to=2025-12-10&tagfilter=&action=history diff18], [https://en.wikipedia.org/wiki/Wikipedia:Administrators%27_noticeboard/3RRArchive502#c-NebY-20251208215500-User:Glebushko0703_reported_by_User:NebY_(Result:_Partially_blocked_2_weeks) diff19]
+
+Particularly, Glebushko0703 edit-warred to insert [[WP:UNDUE|undue]] BLP-violating content into [[Kaja Kallas]] ([https://en.wikipedia.org/w/index.php?title=Kaja_Kallas&diff=prev&oldid=1326217665 diff20], [https://en.wikipedia.org/w/index.php?title=Kaja_Kallas&diff=prev&oldid=1326220331 diff21], [https://en.wikipedia.org/w/index.php?title=Kaja_Kallas&diff=prev&oldid=1326314775 diff22], [https://en.wikipedia.org/w/index.php?title=Kaja_Kallas&diff=prev&oldid=1326347177 diff23], [https://en.wikipedia.org/w/index.php?title=Kaja_Kallas&diff=prev&oldid=1326351209 diff24], [https://en.wikipedia.org/w/index.php?title=Kaja_Kallas&diff=prev&oldid=1326352687 diff25]). Today, Glebushko0703 restored an unexplained AI tag to [[Estonia]] ([https://en.wikipedia.org/w/index.php?title=Estonia&diff=prev&oldid=1335278481 diff26]) to discredit a proper article.
+
+==== Harassment ====
+
+[https://en.wikipedia.org/w/index.php?diff=1318672405 diff27], [https://en.wikipedia.org/wiki/User_talk:LordCollaboration#c-Ivanvector-20251230014900-Sock_puppet_accusations diff28], to mention but a few. Analysis by an admin: diff28, [https://en.wikipedia.org/wiki/Wikipedia:Administrators%27_noticeboard/IncidentArchive1212#c-Ivanvector-20260111003500-Glebushko0703-20260110232000 diff29]. The user made several comments generalizing those he perceived as Estonians: diff27, [https://en.wikipedia.org/w/index.php?title=User_talk:Glebushko0703&diff=prev&oldid=1330460483 diff30], [https://en.wikipedia.org/w/index.php?title=User_talk:Glebushko0703&diff=prev&oldid=1330613856 diff31], [https://en.wikipedia.org/wiki/Talk:Kaja_Kallas#c-Glebushko0703-20260110010000-Wilk10-20260109193100 diff32], to mention but a few.
+
+=== Conclusion ===
+
+His conduct is combatively tendentious. Whenever his edits get reverted, he prefers edit warring to force his way through and bludgeoning Talk page discussions to become the last comment in a bid to get his desired "consensus." Such conduct is a net negative to the [[WP:CT/EE|EE]] topic area. The repeated blocks also show a major CIR issue. It is not a constructive use of community time to entertain this. There is a [[WP:PACT|limit]] to assumption of good faith when an unabated pattern of non-neutral editing is seen.
+
+; Diffs of previous relevant sanctions, if any : 
+
+# [https://en.wikipedia.org/w/index.php?title=Special:Log&logid=176176974 10 January 2026]: 72-hour page block from [[User talk:LordCollaboration]] for {{tq|repeated inferences (with no credible evidence) the target page user is puppeting; stay away from LordCollaboration or this block might be broadened}}
+# [https://en.wikipedia.org/w/index.php?title=Special:Log&logid=175855260 31 December 2025]: 31-hour site block for personal attack or harassment
+# [https://en.wikipedia.org/w/index.php?title=Special:Log&logid=175726307 28 December 2025]: 3-month page block from [[Anti-Russian sentiment]] for {{tq|edit warring about the same content (compare [[Special:Diff/1324924298]]) directly after the block expired}}
+# [https://en.wikipedia.org/w/index.php?title=Special:Log&logid=175149972 10 December 2025]: 2-week site block (''Disruptive editing'')
+# [https://en.wikipedia.org/w/index.php?title=Special:Log&logid=175105405 9 December 2025]: 2-week page block from [[Kaja Kallas]] for {{tq|edit warring in additional violation of [[WP:BLPRESTORE]] and [[WP:ONUS]]}}
+# [https://en.wikipedia.org/w/index.php?title=Special:Log&logid=173556767 26 October 2025]: 31-hour site block for {{tq|personal attack or harassment [[Special:Diff/1318672405]] being the final straw after a pattern of testy comments)}}
+
+;If [[Wikipedia:Contentious topics|contentious topics restrictions]] are requested, supply evidence that the user is aware of them (see [[WP:CTOP#Awareness of contentious topics]]):
+
+[https://en.wikipedia.org/wiki/User_talk:Glebushko0703#c-TylerBurden-20251022173900-Introduction_to_contentious_topics diff33], [https://en.wikipedia.org/wiki/User_talk:Glebushko0703#c-ToBeFree-20251209105300-Biographies_of_living_persons diff34]
+
+; Additional comments by editor filing complaint :
+
+; Notification of the user against whom enforcement is requested : [https://en.wikipedia.org/w/index.php?title=User_talk:Glebushko0703&diff=prev&oldid=1335331721 diff35]
+
+=== Discussion concerning Glebushko0703 ===
+
+<small>''Statements must be made in separate sections. They may not exceed 500 [[Word count#Software|words]] and 20 diffs, except by permission of a reviewing administrator.<br />Administrators may remove or shorten noncompliant statements. Disruptive contributions may result in blocks.''</small>
+
+==== Statement by Glebushko0703 ====
+Most of the diffs are taken out of context and the main argument here seems to be focused on me debating other editors to reach a consensus and "not being right".
+This thread reminds me of another [[Wikipedia:Administrators' noticeboard/IncidentArchive1211#Selective RFC application and repeated inaccuracies by Glebushko0703]] and I do not want to waste time on this.
+
+==== Statement by ExRat ====
+Glebushko0703 has had a consistent pattern of disruptive editing and has shown, in my opinion, to have a very strong, overt bias against Estonia, Estonians, and Estonian editors, and their edits seem to bear this out. Notable examples of this ongoing behavior, apart from those listed above, include: 
+
+*Following the closing of the [https://en.wikipedia.org/wiki/Wikipedia_talk:Manual_of_Style/Baltic_states-related_articles RFC:Manual of Style/Baltic states-related articles] that they created, [https://en.wikipedia.org/w/index.php?title=User_talk:GoodDay/Archive_49&diff=prev&oldid=1334272889 Glebushko0703 has threatened to create a Wiki article about a reporter named Ronald Liive] of [[Eesti Rahvusringhääling]] (ERR, Estonian Public Broadcasting, referring to it was "Yellow Press") for [https://news.err.ee/1609903256/estonian-volunteers-struggling-to-protect-wikipedia-from-russian-propaganda reporting on the RFC] for the sole purpose of harassing/irritating Mr. Liive: {{tq|That Mr. Ronald Liive seems like a very active journalist, should we create a Wiki page about him?}} and {{tq|That's why I think he won't oppose the creation of his own article on Wikipedia, but over there he will be listed as born in Estonian SSR unfortunately.}}
+*Has proposed to [[User:GoodDay]] that they [https://en.wikipedia.org/wiki/User_talk:GoodDay/Archive_49 form a club] called the "Wikipedia Anti-Nationalist Estonian Movement (WANEM)" to allegedly {{tq|counteract socks and POV pushing}} and threating to edit war ([https://en.wikipedia.org/w/index.php?diff=1330352857 dif1]) [[User:ExRat|ExRat]] ([[User talk:ExRat|talk]]) 22:41, 28 January 2026 (UTC)
+
+<!-- Copy and paste this empty section below the most recent statement and replace "(username)" with your username. -->
+
+=== Result concerning Glebushko0703 ===
+
+:''This section is to be edited only by uninvolved administrators. Comments by others will be moved to the sections above.''
+<!-- When closing this request use {{hat|Result}} / {{hab}}, inform the user on their talk page if they are being sanctioned (eg with {{AE sanction}} or {{uw-aeblock}} and note it in the discretionary sanctions log. -->
+*<!--
+-->
+{{collapse bottom}}
+
+==Malayalee from India==
+<small>''This request may be declined without further action if insufficient or unclear information is provided in the "Request" section below. <br />Requests may not exceed 500 [[Word count#Software|words]] and 20 diffs (not counting required information), except by permission of a reviewing administrator.''</small>
+
+===Request concerning Malayalee from India===
+; User who is submitting this request for enforcement : {{userlinks|Pppery}} 17:50, 28 January 2026 (UTC)
+
+; User against whom enforcement is requested : {{userlinks|Malayalee from India}}<p>{{ds/log|Malayalee from India}}</p>
+
+<!--- Here and at the end, replace USERNAME with the username of the editor against whom you request enforcement. --->
+
+;Sanction or remedy to be enforced: [[Wikipedia:Contentious topics/South Asia]]
+<!--- Link to the sanction or remedy that you ask to be enforced --->
+
+; [[WP:DIFF|Diffs]] of edits that violate this sanction or remedy, and an explanation ''how'' these edits violate it :
+<!-- Supply diffs as evidence here, and explain why they require arbitration enforcement. Any allegation not supported by a diff is usually disregarded. You may also link to an archived version of long discussions instead of supplying very many diffs. Enforcement requests and statements in response to them may not exceed 500 words and 20 diffs, except by permission of a reviewing administrator. Non-compliant contributions may be removed or shortened by administrators. Disruptive contributions such as [[WP:NPA|personal attacks]], or groundless or [[vexatious]] complaints, may result in blocks or other sanctions.-->
+
+[https://en.wikipedia.org/w/index.php?title=Muslim_Students_Federation&diff=1335122011&oldid=1330578759 this] and the resulting entry at [[WP:Database reports/Possibly out-of-process deletions#G6]] is what brought it to my attention, but basically every single edit I spot-checked is either about Indian political parties or Indian military history both of which are under extended-confirmed restrictions. 
+
+; Diffs of previous relevant sanctions, if any : 
+
+;If [[Wikipedia:Contentious topics|contentious topics restrictions]] are requested, supply evidence that the user is aware of them (see [[WP:CTOP#Awareness of contentious topics]]):
+* [https://en.wikipedia.org/w/index.php?title=User_talk:Malayalee_from_India&diff=prev&oldid=1310844792 Alerted 11 Sept 2025]
+
+; Additional comments by editor filing complaint :
+<!-- Add any further comment here -->
+
+; Notification of the user against whom enforcement is requested :  https://en.wikipedia.org/w/index.php?title=User_talk:Malayalee_from_India&diff=prev&oldid=1335335125
+<!-- Please notify the user against whom you request enforcement of the request (you may use {{subst:AE-notice|thread name}}), and then replace this comment with a diff of the notification. The request will normally not be processed otherwise. -->
+
+<!--- In the line below, replace USERNAME with the username of the editor against whom you request enforcement. --->
+
+===Discussion concerning Malayalee from India===
+<small>''Statements must be made in separate sections. They may not exceed 500 [[Word count#Software|words]] and 20 diffs, except by permission of a reviewing administrator.<br />Administrators may remove or shorten noncompliant statements. Disruptive contributions may result in blocks.''</small>
+
+====Statement by Malayalee from India====
+
+====Statement by (username)====
+<!-- Copy and paste this empty section below the most recent statement and replace "(username)" with your username. -->
+
+===Result concerning Malayalee from India===
+:''This section is to be edited only by uninvolved administrators. Comments by others will be moved to the sections above.''
+<!-- When closing this request use {{hat|Result}} / {{hab}}, inform the user on their talk page if they are being sanctioned (eg with {{AE sanction}} or {{uw-aeblock}} and note it in the discretionary sanctions log. -->
+*<!--
+-->
