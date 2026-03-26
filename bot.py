@@ -58,7 +58,7 @@ class BotConfig:
     arca_page: str = "Wikipedia:Arbitration/Requests/Clarification and Amendment"
     ae_page: str = "Wikipedia:Arbitration/Requests/Enforcement"
     arc_page: str = "Wikipedia:Arbitration/Requests/Case"
-    open_cases_page: str = "Template:ArbComOpenTasks/Cases"
+    open_cases_page: str = "Template:Arbitration Committee open tasks/Cases"
     
     target_page: str = "User:ClerkBot/word counts"
     data_page: str = "User:ClerkBot/word counts/data"
