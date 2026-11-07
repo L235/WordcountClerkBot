@@ -365,11 +365,18 @@ def resolve_username(header: str, body: str, controls: StatementControls | None 
     controls = controls if controls is not None else parse_statement_controls(body)
     if controls.user:
         return normalize_username(controls.user) or ""
-    heading_users = user_links(header)
-    if len(set(heading_users)) == 1:
-        return normalize_username(heading_users[0]) or ""
     plain = mwpfh.parse(header).strip_code().strip()
     simple = normalize_username(strip_parenthetical(plain, body)) or ""
+    # A link identifies the author only when its label is the author portion,
+    # not when it merely names someone in a trailing contextual qualifier.
+    heading_users = set()
+    for link in mwpfh.parse(header).filter_wikilinks():
+        targets = user_links(str(link))
+        label = normalize_username(mwpfh.parse(str(link)).strip_code().strip())
+        if targets and label in {simple, normalize_username(plain)}:
+            heading_users.add(normalize_username(targets[0]))
+    if len(heading_users) == 1:
+        return heading_users.pop() or ""
     # A signature may use a display alias (e.g. Vanamonde -> Vanamonde93).
     # Require the visible link label to match exactly, and a unique target.
     candidates = set()
@@ -768,12 +775,19 @@ class SimpleBoardParser(BaseParser):
 
             statements: list[Statement] = []
             for st in lvl2.get_sections(levels=[3]):
-                heading = mwpfh.parse(st.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
+                heading = mwpfh.parse(str(st.filter_headings()[0].title)).strip_code().strip()
                 if heading.lower() == CFG.placeholder_heading:
                     continue
                 if not heading.lower().startswith("statement by"):
                     continue
-                raw_heading = str(st.filter_headings()[0].title).strip()
+                heading_code = mwpfh.parse(str(st.filter_headings()[0].title))
+                # Unwrap formatting before removing the prefix, retaining
+                # wikilink targets in the author suffix (including piped links).
+                for tag in reversed(heading_code.filter_tags()):
+                    heading_code.replace(tag, tag.contents or "", recursive=True)
+                for comment in heading_code.filter_comments():
+                    heading_code.remove(comment, recursive=True)
+                raw_heading = str(heading_code).strip()
                 raw_user = re.sub(r"^Statement by\s+", "", raw_heading, flags=re.I)
                 if is_placeholder_user(raw_user):
                     continue

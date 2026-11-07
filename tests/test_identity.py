@@ -10,6 +10,9 @@ import bot
     ("Vanamonde", "Signed [[User:Vanamonde93|Vanamonde]].", "Vanamonde93"),
     ("Alias", "[[User:First|Alias]] and [[User:Second|Alias]]", "Alias"),
     ("[[User:Actual|Alias]]", "Other [[User:Person]]", "Actual"),
+    ("Alice (about [[User:Bob|Bob]])", "[[User:Alice|Alice]]", "Alice"),
+    ("[[User:Actual|Alias]] (about [[User:Bob|Bob]])", "", "Actual"),
+    ("[[User:Alice (continued)|Alice (continued)]]", "", "Alice (continued)"),
     ("Alice (continued)", "[[User:Alice|Alice]]", "Alice"),
     ("Alice (continued)", "[[User:Alice (continued)|Alice]]", "Alice (continued)"),
     ("Example_User", "No links", "Example User"),
@@ -58,3 +61,28 @@ def test_canonical_username_data_also_accepts_underscore_form():
     data = bot.ParsedData({"AE": [bot.RequestTable("Request", "Request", [statement])]}, {})
     output = bot.assemble_data_template_from_data(data)
     assert "| Example_User\n         | Example User =" in output
+
+
+def test_contextual_heading_link_does_not_grant_party_limit(mock_site, monkeypatch):
+    monkeypatch.setattr(bot, "visible_word_count", lambda *args: 600)
+    monkeypatch.setattr(bot, "rendered_word_count", lambda *args: 600)
+    parser = bot.EvidenceParser(mock_site, "Example", ["Bob"])
+    parser.board_page = "Example/Evidence"
+    statement = parser.parse("== Evidence presented by Alice (about [[User:Bob|Bob]]) ==\nEvidence. [[User:Alice|Alice]]")[0].statements[0]
+    assert statement.user == "Alice" and statement.limit == 500
+    assert statement.status == bot.Status.OVER
+
+
+@pytest.mark.parametrize("heading", [
+    "<span>Statement by</span> [[User:Actual|Alias]]",
+    "''Statement by'' [[User:Actual|Alias]]",
+    "<span>Statement by [[User:Actual|Alias]]</span>",
+    "Statement<!-- comment --> by [[User:Actual|Alias]]",
+])
+def test_formatted_statement_prefix_keeps_author_link(mock_site, monkeypatch, heading):
+    monkeypatch.setattr(bot, "visible_word_count", lambda *args: 1)
+    monkeypatch.setattr(bot, "rendered_word_count", lambda *args: 1)
+    parser = bot.SimpleBoardParser(mock_site)
+    parser.board_page = "Example"
+    statement = parser.parse(f"== Request ==\n=== {heading} ===\nEvidence.")[0].statements[0]
+    assert statement.user == "Actual"
