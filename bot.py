@@ -288,8 +288,22 @@ _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
 
 def slugify(s: str) -> str:
     """Convert a heading into a MediaWiki anchor (no spaces, punctuation stripped)."""
-    text = mwpfh.parse(s, skip_style_tags=True).strip_code()
+    text = mwpfh.parse(str(s)).strip_code()
     return re.sub(r"\s+", "_", text).strip("_")
+
+
+def heading_anchors(titles):
+    """Allocate unique section IDs across the whole page, including non-authors."""
+    used = set()
+    for title in titles:
+        base = slugify(title)
+        anchor = base
+        suffix = 2
+        while anchor in used:
+            anchor = f"{base}_{suffix}"
+            suffix += 1
+        used.add(anchor)
+        yield anchor
 
 def strip_parenthetical(username: str, body: str) -> str:
     """Remove parenthetical content from username if not referenced in body."""
@@ -694,6 +708,7 @@ class RawSection:
     end: int
     heading_start: int
     subtree_end: int
+    anchor: str
 
     def body(self, text: str) -> str:
         return text[self.start : self.end]
@@ -705,6 +720,7 @@ class RawSection:
 
 def scan_sections(text: str) -> list[RawSection]:
     heads = list(HEADING_RE.finditer(text))
+    anchors = list(heading_anchors(h.group(2) for h in heads))
     return [
         RawSection(
             len(h.group(1)),
@@ -714,6 +730,7 @@ def scan_sections(text: str) -> list[RawSection]:
             h.start(),
             next((other.start() for other in heads[i + 1:]
                   if len(other.group(1)) <= len(h.group(1))), len(text)),
+            anchors[i],
         )
         for i, h in enumerate(heads)
     ]
@@ -812,10 +829,12 @@ def is_placeholder_user(user: str) -> bool:
 class SimpleBoardParser(BaseParser):
     def parse(self, text: str) -> list[RequestTable]:
         code = mwpfh.parse(text, skip_style_tags=True)
+        headings = code.filter_headings()
+        anchors = dict(zip((id(h) for h in headings), heading_anchors(h.title for h in headings)))
         tables: list[RequestTable] = []
         for lvl2 in code.get_sections(levels=[2]):
             sec_title = mwpfh.parse(lvl2.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
-            anchor = slugify(sec_title)
+            anchor = anchors[id(lvl2.filter_headings()[0])]
             sec_wikitext = str(lvl2)
             closed = bool(HAT_OPEN_RE.match(sec_wikitext.partition("\n")[2].lstrip()))
 
@@ -838,7 +857,7 @@ class SimpleBoardParser(BaseParser):
                 if is_placeholder_user(raw_user):
                     continue
                 body = str(st).split("\n", 1)[1]
-                statements.append(self._make_statement(raw_user, body, slugify(heading)))
+                statements.append(self._make_statement(raw_user, body, anchors[id(st.filter_headings()[0])]))
 
             tables.append(RequestTable(sec_title, anchor, statements, closed))
         return tables
@@ -858,7 +877,7 @@ class AEParser(BaseParser):
             if sec.level == 2:
                 body_full = sec.subtree_body(text)
                 closed = bool(HAT_OPEN_RE.match(body_full.lstrip()))
-                current = RequestTable(sec.title, slugify(sec.title), [], closed)
+                current = RequestTable(sec.title, sec.anchor, [], closed)
                 tables.append(current)
                 continue
 
@@ -871,7 +890,7 @@ class AEParser(BaseParser):
                     continue
                 body = self._without_nested_replies(sec, text)
                 current.statements.append(
-                    self._make_statement(raw_user, body, slugify(sec.title))
+                    self._make_statement(raw_user, body, sec.anchor)
                 )
 
             elif sec.level == 3 and sec.title.lower().startswith("request concerning"):
@@ -879,7 +898,7 @@ class AEParser(BaseParser):
                 if body:
                     user = self._requesting_user(sec, text)
                     current.statements.append(
-                        self._make_statement(user, body, slugify(sec.title))
+                        self._make_statement(user, body, sec.anchor)
                     )
 
         return tables
@@ -937,7 +956,7 @@ class EvidenceParser(BaseParser):
                 body = sec.subtree_body(text)
                 
                 statements.append(
-                    self._make_statement(raw_user, body, slugify(sec.title))
+                    self._make_statement(raw_user, body, sec.anchor)
                 )
         
         if statements:

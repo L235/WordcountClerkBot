@@ -62,3 +62,32 @@ def test_empty_user_does_not_enter_stats_or_data():
 def test_single_statement_link_format_unchanged():
     statement = bot.Statement("Alice", "first", 1, 1, 500)
     assert statement.section_links("Page") == "[[Page#first|link]]"
+
+
+@pytest.mark.parametrize("kind", ["evidence", "ae", "simple"])
+def test_repeated_author_heading_retains_both_source_links(mock_site, monkeypatch, kind):
+    monkeypatch.setattr(bot, "visible_word_count", lambda *args: 300)
+    monkeypatch.setattr(bot, "rendered_word_count", lambda *args: 300)
+    if kind == "evidence":
+        parser = bot.EvidenceParser(mock_site, "Example", [])
+        heading = "== Evidence presented by Alice =="
+        text = f"{heading}\nFirst.\n{heading}\nSecond."
+        anchor = "Evidence_presented_by_Alice"
+    else:
+        parser = (bot.AEParser if kind == "ae" else bot.SimpleBoardParser)(mock_site)
+        text = "== Request ==\n=== Statement by Alice ===\nFirst.\n=== Statement by Alice ===\nSecond."
+        anchor = "Statement_by_Alice"
+    parser.board_page = "Example"
+    tables = parser.parse(text)
+    total = tables[0].author_totals()[0]
+    assert total.visible == 600
+    assert total.anchors == (anchor, anchor + "_2")
+    report = bot.generate_reports(bot.ParsedData({"AE": tables}, {}))
+    for output in (report.text, report.extended):
+        assert f"#{anchor}|link 1]]" in output
+        assert f"#{anchor}_2|link 2]]" in output
+
+
+def test_heading_ids_include_non_author_collisions_across_requests():
+    sections = bot.scan_sections("== Same ==\n=== Same ===\n== Same ==\n=== Same_2 ===\n")
+    assert [section.anchor for section in sections] == ["Same", "Same_2", "Same_3", "Same_2_2"]
