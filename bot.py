@@ -316,7 +316,13 @@ STATUS_TEMPLATE_NAMES = {"acwordstatus", "arbitration committee word status"}
 
 
 def normalize_template_name(name: str) -> str:
-    name = re.sub(r"\s+", " ", name.replace("_", " ")).strip().lower().lstrip(":")
+    name = re.sub(r"\s+", " ", name.replace("_", " ")).strip().lower()
+    # A leading colon selects mainspace unless a namespace is explicit.
+    if name.startswith(":"):
+        target = name[1:].strip()
+        if not target.startswith("template:"):
+            return name
+        name = target
     if name.startswith("template:"):
         name = name.partition(":")[2].strip()
     return name

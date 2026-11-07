@@ -11,6 +11,7 @@ import bot
     "ACWordStatus", "Arbitration Committee word status",
     "arbitration_committee_word_status", "Template:ACWordStatus",
     " Template:Arbitration   Committee word status ",
+    ":Template:ACWordStatus",
 ])
 def test_all_status_names_are_excluded_and_detected(mock_site, name):
     parser = bot.BaseParser(mock_site)
@@ -28,6 +29,19 @@ def test_nested_signature_removed_with_entire_limit_template():
         "Before {{ApprovedWordLimit|words=1500|sig={{U|Clerk}} signature {{small|more text}}}} after.")
     assert controls.limit == 1500
     assert controls.body == "Before  after."
+
+
+@pytest.mark.parametrize("name", ["ApprovedWordLimit", "ACWordStatus", "Arbitration Committee word status"])
+def test_mainspace_transclusion_is_not_a_control(name):
+    text = "Before {{:" + name + "|user=Bob|words=9000}} after."
+    controls = bot.parse_statement_controls(text)
+    assert controls.body == text
+    assert controls.user is None and controls.limit is None and not controls.has_status
+
+
+def test_explicit_template_namespace_with_leading_colon_is_a_limit():
+    controls = bot.parse_statement_controls("{{:Template:ApprovedWordLimit|words=9000}}")
+    assert controls.limit == 9000 and controls.body == ""
 
 
 def test_nested_control_templates_are_removed_safely():
