@@ -47,6 +47,7 @@ from pywikibot.tools import normalize_username
 import mwparserfromhell as mwpfh
 from bs4 import BeautifulSoup
 import tinycss2
+from tinycss2.color4 import parse_color
 
 ###############################################################################
 # Configuration                                                               #
@@ -623,6 +624,74 @@ def _api_render(site: APISite, wikitext: str, title: str | None = None) -> str:
     CACHE.cache_rendered_html(key, html)
     return html
 
+def literal_style_exclusion(name: str, values: list) -> bool | None:
+    """Validate literal property values; None means invalid/unsupported.
+
+    This is not computed style: variables, math, and inherited styles require
+    browser context. Only validated literal values participate in the cascade.
+    """
+    words = [token.lower_value for token in values if token.type == "ident"]
+    if len(values) == 1 and words and words[0] in {
+        "initial", "inherit", "unset", "revert", "revert-layer",
+    }:
+        return False
+    if name == "display":
+        if len(words) != len(values) or len(set(words)) != len(words):
+            return None
+        outside = {"block", "inline", "run-in"}
+        inside = {"flow", "flow-root", "table", "flex", "grid", "ruby"}
+        single = {
+            "none", "contents", "inline-block", "inline-table", "inline-flex", "inline-grid",
+            "table-row-group", "table-header-group", "table-footer-group", "table-row",
+            "table-cell", "table-column-group", "table-column", "table-caption",
+            "ruby-base", "ruby-text", "ruby-base-container", "ruby-text-container",
+        }
+        if len(words) == 1 and words[0] in single:
+            return words[0] == "none"
+        parts = set(words)
+        allowed_inside = {"flow", "flow-root"} if "list-item" in parts else inside
+        allowed = outside | allowed_inside | {"list-item"}
+        if (parts <= allowed and len(parts & outside) <= 1
+                and len(parts & allowed_inside) <= 1):
+            return False
+        return None
+
+    lines = {"underline", "overline", "line-through", "blink"}
+    exclusive_lines = {"none", "spelling-error", "grammar-error"}
+    seen_lines = set()
+    seen = set()
+    length_units = {
+        "px", "cm", "mm", "q", "in", "pc", "pt", "em", "rem", "ex", "rex", "ch", "rch",
+        "cap", "rcap", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax",
+        "svw", "svh", "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax",
+        "dvw", "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+    }
+    for token in values:
+        word = token.lower_value if token.type == "ident" else None
+        if word in lines | exclusive_lines:
+            if (word in seen_lines or (seen_lines and
+                    (word in exclusive_lines or seen_lines & exclusive_lines))):
+                return None
+            seen_lines.add(word)
+            continue
+        if name == "text-decoration-line":
+            return None
+        if word in {"solid", "double", "dotted", "dashed", "wavy"}:
+            category = "style"
+        elif (word in {"auto", "from-font"} or token.type == "percentage"
+              or (token.type == "number" and token.value == 0)
+              or (token.type == "dimension" and token.lower_unit in length_units)):
+            category = "thickness"
+        elif parse_color(token) is not None:
+            category = "color"
+        else:
+            return None
+        if category in seen:
+            return None
+        seen.add(category)
+    return "line-through" in seen_lines
+
+
 def excluded_inline_style(style: str) -> bool:
     """Recognize literal hiding/strike declarations, respecting order/importance."""
     effective = {}
@@ -635,15 +704,13 @@ def excluded_inline_style(style: str) -> bool:
         values = [token for token in declaration.value if token.type not in {"whitespace", "comment"}]
         if not values or any(token.type == "error" for token in values):
             continue
+        excluded = literal_style_exclusion(name, values)
+        if excluded is None:
+            continue
         key = "display" if name == "display" else "decoration"
         previous = effective.get(key)
         if previous and previous[0] and not declaration.important:
             continue
-        if key == "display":
-            excluded = (len(values) == 1 and values[0].type == "ident"
-                        and values[0].lower_value == "none")
-        else:
-            excluded = any(token.type == "ident" and token.lower_value == "line-through" for token in values)
         effective[key] = (declaration.important, excluded)
     return any(excluded for _, excluded in effective.values())
 

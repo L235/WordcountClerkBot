@@ -79,6 +79,12 @@ python bot.py
 
 ## Development
 
+Inline hiding/strike detection validates literal `display`, `text-decoration`,
+and `text-decoration-line` values before applying declaration order and
+`!important`. Invalid values do not override valid declarations. This is a
+static HTML counter, not a browser computed-style engine: stylesheet selectors,
+CSS variables, math expressions, and inherited styles are not resolved.
+
 When an author has multiple statement sections in the same request, the report
 and status-template data use their combined word count. The highest recognized
 word-limit allowance applies to that total; allowances are not added together.
