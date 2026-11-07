@@ -604,9 +604,15 @@ class RawSection:
     title: str
     start: int
     end: int
+    heading_start: int
+    subtree_end: int
 
     def body(self, text: str) -> str:
         return text[self.start : self.end]
+
+    def subtree_body(self, text: str) -> str:
+        """Include child sections, stopping before the next peer/parent heading."""
+        return text[self.start : self.subtree_end]
 
 
 def scan_sections(text: str) -> list[RawSection]:
@@ -617,6 +623,9 @@ def scan_sections(text: str) -> list[RawSection]:
             h.group(2).strip(),
             h.end(),
             heads[i + 1].start() if i + 1 < len(heads) else len(text),
+            h.start(),
+            next((other.start() for other in heads[i + 1:]
+                  if len(other.group(1)) <= len(h.group(1))), len(text)),
         )
         for i, h in enumerate(heads)
     ]
@@ -707,6 +716,12 @@ class BaseParser:
         raise NotImplementedError
 
 
+def is_placeholder_user(user: str) -> bool:
+    user = user.strip().lower()
+    return (user in {"", "(username)", "{other-editor}", "{your user name}"}
+            or bool(re.fullmatch(r"\((?:un)?involved editor(?: \d+)?\)", user)))
+
+
 class SimpleBoardParser(BaseParser):
     def parse(self, text: str) -> list[RequestTable]:
         code = mwpfh.parse(text, skip_style_tags=True)
@@ -715,7 +730,7 @@ class SimpleBoardParser(BaseParser):
             sec_title = mwpfh.parse(lvl2.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
             anchor = slugify(sec_title)
             sec_wikitext = str(lvl2)
-            closed = bool(HAT_OPEN_RE.match(sec_wikitext.lstrip()))
+            closed = bool(HAT_OPEN_RE.match(sec_wikitext.partition("\n")[2].lstrip()))
 
             statements: list[Statement] = []
             for st in lvl2.get_sections(levels=[3]):
@@ -725,6 +740,8 @@ class SimpleBoardParser(BaseParser):
                 if not heading.lower().startswith("statement by"):
                     continue
                 raw_user = re.sub(r"^Statement by\s+", "", heading, flags=re.I)
+                if is_placeholder_user(raw_user):
+                    continue
                 body = str(st).split("\n", 1)[1]
                 statements.append(self._make_statement(raw_user, body, slugify(heading)))
 
@@ -744,11 +761,7 @@ class AEParser(BaseParser):
 
         for i, sec in enumerate(sections):
             if sec.level == 2:
-                next2_start = next(
-                    (s.start for s in sections[i+1:] if s.level == 2),
-                    len(text)
-                )
-                body_full = text[sec.start:next2_start]
+                body_full = sec.subtree_body(text)
                 closed = bool(HAT_OPEN_RE.match(body_full.lstrip()))
                 current = RequestTable(sec.title, slugify(sec.title), [], closed)
                 tables.append(current)
@@ -758,8 +771,17 @@ class AEParser(BaseParser):
                 continue
 
             if sec.level in {3, 4} and self._STMT.match(sec.title):
-                body = sec.body(text)
                 raw_user = self._STMT.sub("", sec.title)
+                if is_placeholder_user(raw_user):
+                    continue
+                end = sec.subtree_end
+                for child in sections[i + 1:]:
+                    if child.heading_start >= end:
+                        break
+                    if child.level in {3, 4} and self._STMT.match(child.title):
+                        end = child.heading_start
+                        break
+                body = text[sec.start:end]
                 current.statements.append(
                     self._make_statement(raw_user, body, slugify(sec.title))
                 )
@@ -779,11 +801,11 @@ class AEParser(BaseParser):
         return m.group(1).strip() if m else ""
 
     def _collect_request_body(self, sec: RawSection, full: str) -> str:
-        seg = sec.body(full)
+        seg = sec.subtree_body(full)
         parts = []
         for m in self._PSEUDO.finditer(seg):
             start = m.end()
-            nxt = re.search(r"^(?:;|=){1,6}", seg[start:], flags=re.M)
+            nxt = re.search(r"^;", seg[start:], flags=re.M)
             end = nxt.start() + start if nxt else len(seg)
             parts.append(seg[start:end])
         return "\n".join(parts)
@@ -812,14 +834,10 @@ class EvidenceParser(BaseParser):
             if sec.level == 2 and sec.title.lower().startswith("evidence presented by"):
                 raw_user = re.sub(r"^Evidence presented by\s+", "", sec.title, flags=re.I)
                 
-                if raw_user.lower() == "{your user name}":
+                if is_placeholder_user(raw_user):
                     continue
                 
-                next2_start = next(
-                    (s.start for s in sections[i+1:] if s.level == 2),
-                    len(text)
-                )
-                body = text[sec.start:next2_start]
+                body = sec.subtree_body(text)
                 
                 limit = self._get_word_limit(raw_user)
                 statements.append(
