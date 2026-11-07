@@ -28,7 +28,6 @@ import re
 import sys
 import time
 from dataclasses import asdict, dataclass
-from difflib import SequenceMatcher
 from enum import Enum
 from typing import ClassVar, Type
 from pathlib import Path
@@ -298,7 +297,7 @@ def strip_parenthetical(username: str, body: str) -> str:
     if not m:
         return username
     base = m.group(1).rstrip()
-    if re.search(rf"\[\[\s*(?:User(?: talk)?)\s*:\s*{re.escape(username)}\b", body, flags=re.I):
+    if normalize_username(username) in {normalize_username(user) for user in user_links(body)}:
         return username
     return base
 
@@ -306,10 +305,10 @@ def user_links(body: str) -> list[str]:
     """Extract usernames from User: and User talk: links in wikitext."""
     links: list[str] = []
     for wl in mwpfh.parse(body, skip_style_tags=True).filter_wikilinks():
-        title = str(wl.title)
+        title = str(wl.title).strip().lstrip(":")
         ns, _, rest = title.partition(":")
-        if ns.lower() in {"user", "user talk"} and rest:
-            links.append(rest.split("/")[0].strip())
+        if ns.strip().lower() in {"user", "user talk"} and rest:
+            links.append(rest.split("/")[0].split("#")[0].strip())
     return links
 
 STATUS_TEMPLATE_NAMES = {"acwordstatus", "arbitration committee word status"}
@@ -361,32 +360,31 @@ def parse_statement_controls(body: str) -> StatementControls:
     return result
 
 
-def fuzzy_username(header: str, body: str, controls: StatementControls | None = None) -> str:
-    """
-    Find best matching username from header and body links.
-    """
-    def capitalize_first(s: str) -> str:
-        return s[0].upper() + s[1:] if s else s
-
-    # --- Template override (top priority) ---
+def resolve_username(header: str, body: str, controls: StatementControls | None = None) -> str:
+    """Use explicit identity evidence; unrelated user links never replace a heading."""
     controls = controls if controls is not None else parse_statement_controls(body)
     if controls.user:
-        return capitalize_first(controls.user)
-
-    # ---- Existing heuristics (header + body links) ----
-    simple = capitalize_first(strip_parenthetical(header, body))
-    cands = [capitalize_first(c) for c in user_links(body)]
-    if not cands:
-        return simple
-    for c in cands:
-        if c.lower() == simple.lower():
-            return c
-    best, score = simple, 0.0
-    for c in cands:
-        r = SequenceMatcher(None, simple.lower(), c.lower()).ratio()
-        if r > score:
-            best, score = c, r
-    return best if score >= 0.3 else simple
+        return normalize_username(controls.user) or ""
+    heading_users = user_links(header)
+    if len(set(heading_users)) == 1:
+        return normalize_username(heading_users[0]) or ""
+    plain = mwpfh.parse(header).strip_code().strip()
+    simple = normalize_username(strip_parenthetical(plain, body)) or ""
+    # A signature may use a display alias (e.g. Vanamonde -> Vanamonde93).
+    # Require the visible link label to match exactly, and a unique target.
+    candidates = set()
+    for link in mwpfh.parse(body).filter_wikilinks():
+        targets = user_links(str(link))
+        if not targets:
+            continue
+        target = normalize_username(targets[0])
+        if target == simple:
+            return simple
+        if link.text is not None:
+            label = normalize_username(mwpfh.parse(str(link.text)).strip_code().strip())
+            if label == simple:
+                candidates.add(target)
+    return candidates.pop() if len(candidates) == 1 else simple
 
 ###############################################################################
 # Dataclasses                                                                 #
@@ -721,6 +719,9 @@ class BaseParser:
     def __init__(self, site: APISite):
         self.site = site
 
+    def _default_limit(self, username: str) -> int:
+        return CFG.default_limit
+
     def _extract_limit(self, body: str, default: int | None = None) -> int:
         return parse_statement_controls(body).limit or default or CFG.default_limit
 
@@ -728,7 +729,8 @@ class BaseParser:
         self, raw_user: str, body: str, anchor: str, limit: int | None = None
     ) -> Statement:
         controls = parse_statement_controls(body)
-        limit_val = controls.limit or limit or CFG.default_limit
+        username = resolve_username(raw_user, body, controls)
+        limit_val = controls.limit or limit or self._default_limit(username)
         has_acwordstatus = controls.has_status
         body_no_templates = controls.body
         # Pass board_page as title for proper template rendering context.
@@ -736,7 +738,7 @@ class BaseParser:
         visible = visible_word_count(self.site, body_no_templates, self.board_page)
         expanded = rendered_word_count(self.site, body_no_templates, self.board_page)
         return Statement(
-            fuzzy_username(raw_user, body, controls),
+            username,
             anchor,
             visible,
             expanded,
@@ -771,7 +773,8 @@ class SimpleBoardParser(BaseParser):
                     continue
                 if not heading.lower().startswith("statement by"):
                     continue
-                raw_user = re.sub(r"^Statement by\s+", "", heading, flags=re.I)
+                raw_heading = str(st.filter_headings()[0].title).strip()
+                raw_user = re.sub(r"^Statement by\s+", "", raw_heading, flags=re.I)
                 if is_placeholder_user(raw_user):
                     continue
                 body = str(st).split("\n", 1)[1]
@@ -854,7 +857,7 @@ class EvidenceParser(BaseParser):
             for party in (parties if parties is not None else extract_involved_parties(site, case_name))
         }
     
-    def _get_word_limit(self, username: str) -> int:
+    def _default_limit(self, username: str) -> int:
         # Normalize both inputs without folding case after the first character.
         if normalize_username(username) in self.involved_parties:
             return CFG.evidence_limit_named
@@ -873,9 +876,8 @@ class EvidenceParser(BaseParser):
                 
                 body = sec.subtree_body(text)
                 
-                limit = self._get_word_limit(raw_user)
                 statements.append(
-                    self._make_statement(raw_user, body, slugify(sec.title), limit)
+                    self._make_statement(raw_user, body, slugify(sec.title))
                 )
         
         if statements:
@@ -1018,6 +1020,8 @@ def assemble_data_template_from_data(parsed_data: ParsedData) -> str:
         for req, users in requests.items():
             parts.append('     | ' + req + ' = {{#switch: {{{user}}}')
             for user, stmt in users.items():
+                if " " in user:
+                    parts.append("         | " + user.replace(" ", "_"))
                 parts.append('         | ' + user + ' = {{#switch: {{{type}}}')
                 parts.append(f'             | words       = {stmt.visible}')
                 parts.append(f'             | uncollapsed = {stmt.expanded}')
