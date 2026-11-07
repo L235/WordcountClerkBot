@@ -46,6 +46,7 @@ from pywikibot.site import APISite
 from pywikibot.tools import normalize_username
 import mwparserfromhell as mwpfh
 from bs4 import BeautifulSoup
+import tinycss2
 
 ###############################################################################
 # Configuration                                                               #
@@ -622,6 +623,31 @@ def _api_render(site: APISite, wikitext: str, title: str | None = None) -> str:
     CACHE.cache_rendered_html(key, html)
     return html
 
+def excluded_inline_style(style: str) -> bool:
+    """Recognize literal hiding/strike declarations, respecting order/importance."""
+    effective = {}
+    for declaration in tinycss2.parse_declaration_list(style, skip_comments=True, skip_whitespace=True):
+        if declaration.type != "declaration":
+            continue
+        name = declaration.lower_name
+        if name not in {"display", "text-decoration", "text-decoration-line"}:
+            continue
+        values = [token for token in declaration.value if token.type not in {"whitespace", "comment"}]
+        if not values or any(token.type == "error" for token in values):
+            continue
+        key = "display" if name == "display" else "decoration"
+        previous = effective.get(key)
+        if previous and previous[0] and not declaration.important:
+            continue
+        if key == "display":
+            excluded = (len(values) == 1 and values[0].type == "ident"
+                        and values[0].lower_value == "none")
+        else:
+            excluded = any(token.type == "ident" and token.lower_value == "line-through" for token in values)
+        effective[key] = (declaration.important, excluded)
+    return any(excluded for _, excluded in effective.values())
+
+
 def _count_rendered_visible(
     site: APISite, wikitext: str, title: str | None = None
 ) -> tuple[int, int]:
@@ -661,13 +687,14 @@ def _count_rendered_visible(
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.select("ol.references, div.references, div.reflist"):
         tag.decompose()
-    for tag in soup.select('[style*="display:none" i]'):
-        tag.decompose()
+    for tag in soup.select("[style]"):
+        if tag.attrs is not None and excluded_inline_style(tag.get("style", "")):
+            tag.decompose()
     for tag in soup.select("[hidden], [aria-hidden='true']"):
         tag.decompose()
     for tag in soup.select(".mw-collapsed, .mw-collapsible-content"):
         tag.decompose()
-    for tag in soup.select('[style*="text-decoration:line-through" i], s, strike, del'):
+    for tag in soup.select("s, strike, del"):
         tag.decompose()
     for tag in soup.select("div#siteSub, div#contentSub, div#jump-to-nav"):
         tag.decompose()
