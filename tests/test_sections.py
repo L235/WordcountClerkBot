@@ -72,3 +72,10 @@ def test_section_offsets_preserve_immediate_and_recursive_body():
     assert "Child." in sections[0].subtree_body(text)
     assert "Two" not in sections[0].subtree_body(text)
     assert text[sections[2].heading_start:].startswith("== Two ==")
+
+
+@pytest.mark.parametrize("parser_cls", [bot.SimpleBoardParser, bot.AEParser])
+def test_similarly_named_template_does_not_close_thread(mock_site, captured, parser_cls):
+    tables = parser_cls(mock_site).parse(
+        "== Request ==\n{{hatnote|A note}}\n=== Statement by Alice ===\nEvidence.")
+    assert not tables[0].closed

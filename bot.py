@@ -287,7 +287,7 @@ AWL_RE         = re.compile(r"\{\{\s*ApprovedWordLimit[^}]*?\bwords\s*=\s*(\d+)"
 TEMPLATE_RE    = re.compile(r"\{\{\s*(?:ApprovedWordLimit|ACWordStatus)[^}]*}}", re.I | re.S)
 ACWORDSTATUS_RE = re.compile(r"\{\{\s*ACWordStatus\b", re.I)
 PAREN_RE = re.compile(r"^(.*?)(\s*\([^()]+\)\s*)$")
-HAT_OPEN_RE = re.compile(r"\{\{\s*hat", re.I)
+HAT_OPEN_RE = re.compile(r"\{\{\s*hat\s*(?=[|}])", re.I)
 _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
 
 def slugify(s: str) -> str:
