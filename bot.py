@@ -682,10 +682,16 @@ def literal_style_exclusion(name: str, values: list) -> bool | None:
               or (token.type == "number" and token.value == 0)
               or (token.type == "dimension" and token.lower_unit in length_units)):
             category = "thickness"
-        elif parse_color(token) is not None:
-            category = "color"
         else:
-            return None
+            try:
+                color = parse_color(token)
+            except (ValueError, TypeError, IndexError, OverflowError):
+                # Some malformed functions (notably color()) raise instead
+                # of returning None in tinycss2. Ignore the declaration.
+                return None
+            if color is None:
+                return None
+            category = "color"
         if category in seen:
             return None
         seen.add(category)

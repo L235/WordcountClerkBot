@@ -43,6 +43,12 @@ import bot
     ("text-decoration:line-through wavy #f00 2px", 2),
     ("text-decoration:line-through rgb(255, 0, 0)", 2),
     ("text-decoration:line-through; text-decoration:underline solid red", 5),
+    ("text-decoration:color()", 5),
+    ("text-decoration:line-through color()", 5),
+    ("text-decoration:line-through; text-decoration:color()", 2),
+    ("text-decoration:line-through; text-decoration:color() !important", 2),
+    ("text-decoration:line-through rgb()", 5),
+    ("text-decoration:line-through color(banana)", 5),
 ])
 def test_count_respects_inline_css(mock_site, mock_cache, style, expected):
     html = f'<p>Visible <span style="{style}">hidden words here</span> text.</p>'
