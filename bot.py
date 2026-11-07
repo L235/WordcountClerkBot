@@ -41,6 +41,7 @@ import hashlib
 import pywikibot
 from pywikibot.data import api as pwb_api
 from pywikibot.site import APISite
+from pywikibot.tools import normalize_username
 import mwparserfromhell as mwpfh
 from bs4 import BeautifulSoup
 
@@ -633,7 +634,7 @@ def extract_involved_parties(site: APISite, case_name: str) -> list[str]:
     for sec in sections:
         if sec.level == 3 and sec.title.lower() == "involved parties":
             body = sec.body(page_text)
-            for match in re.finditer(r'\{\{\s*(?:admin|userlinks)\s*\|\s*(?:1\s*=\s*)?([^|}]+)', body, re.I):
+            for match in re.finditer(r'\{\{\s*(?:admin|adminlinks|userlinks)\s*\|\s*(?:1\s*=\s*)?([^|}]+)', body, re.I):
                 username = match.group(1).strip()
                 if username:
                     parties.append(username)
@@ -769,10 +770,14 @@ class EvidenceParser(BaseParser):
     def __init__(self, site: APISite, case_name: str):
         super().__init__(site)
         self.case_name = case_name
-        self.involved_parties = extract_involved_parties(site, case_name)
+        self.involved_parties = {
+            normalize_username(party)
+            for party in extract_involved_parties(site, case_name)
+        }
     
     def _get_word_limit(self, username: str) -> int:
-        if username in self.involved_parties:
+        # Normalize both inputs without folding case after the first character.
+        if normalize_username(username) in self.involved_parties:
             return CFG.evidence_limit_named
         return CFG.evidence_limit_other
     
