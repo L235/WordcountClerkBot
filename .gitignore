@@ -32,3 +32,5 @@ apicache/
 *.ctrl
 user-config.py
 user-password.py 
+publication_checkpoint.json
+publication_checkpoint.tmp

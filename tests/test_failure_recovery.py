@@ -2,6 +2,7 @@
 import hashlib
 import pickle
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import pytest
 import bot
@@ -21,7 +22,7 @@ def test_failed_source_prevents_publication(mock_site, monkeypatch, failed_page)
             return "{{ArbComOpenTasks/line|mode=case|name=Example}}"
         return ""
     monkeypatch.setattr(bot, "fetch_page", fetch)
-    monkeypatch.setattr(bot, "should_run", lambda site: True)
+    monkeypatch.setattr(bot, "prepare_run", lambda site: SimpleNamespace(texts=None, refresh=False))
     with patch.object(bot, "publish_changes") as publish:
         with pytest.raises(RuntimeError):
             bot.run_logic(mock_site)
