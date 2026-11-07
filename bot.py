@@ -221,14 +221,19 @@ class WordCountCache:
         self._writes = 0
         self._loaded = True
 
-    def flush(self) -> None:
+    def flush(self, *, required: bool = False) -> None:
         """Persist the cache to disk."""
         if not self._loaded:
             return
         try:
-            with open(self.path, "wb") as fh:
+            with open(self.path + ".tmp", "wb") as fh:
                 pickle.dump(self._cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(self.path + ".tmp", self.path)
         except Exception as e:
+            if required:
+                raise
             LOG.debug("Could not write wordcount cache: %s", e)
 
     def clear(self) -> None:
@@ -236,6 +241,9 @@ class WordCountCache:
         self.load()
         self._cache.clear()
         self._mem_cache_html.clear()
+        # Persist invalidation before a refresh can be published/checkpointed.
+        # Restarting before refreshed counts are flushed must only cause misses.
+        self.flush(required=True)
 
     def get(self, key: str) -> tuple[int, int] | None:
         return self._cache.get(key)

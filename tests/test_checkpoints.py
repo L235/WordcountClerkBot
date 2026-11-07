@@ -184,3 +184,36 @@ def test_missing_revision_content_fails(mock_site):
     mock_site.simple_request.return_value.submit.return_value = {"query": {"pages": []}}
     with pytest.raises(KeyError):
         wiki_state.read_contents(mock_site, {"Example": 123})
+
+
+def test_refresh_survives_restart_before_outer_cache_flush(wiki, monkeypatch):
+    cache = bot.WordCountCache(bot.CFG.state_dir)
+    monkeypatch.setattr(bot, "CACHE", cache)
+    html = ["one"]
+    monkeypatch.setattr(bot, "_api_render", lambda *args: html[0])
+    snippet = "{{ChangingTemplate}}"
+    assert bot.visible_word_count(wiki.site, snippet) == 1
+    cache.flush()
+    html[0] = "one two three four five"
+    def collect(*args):
+        assert bot.visible_word_count(wiki.site, snippet) == 5
+        return bot.ParsedData({}, {})
+    monkeypatch.setattr(bot, "collect_all_data", collect)
+    bot.run_logic(wiki.site)
+    assert bot.prepare_run(wiki.site) is None
+    # Simulate process termination immediately after run_logic, before main.flush.
+    monkeypatch.setattr(bot, "CACHE", bot.WordCountCache(bot.CFG.state_dir))
+    edit(wiki, bot.CFG.ae_page, "<!-- new source revision -->")
+    bot.run_logic(wiki.site)
+
+
+def test_failed_durable_invalidation_blocks_publication(wiki, monkeypatch):
+    cache = bot.WordCountCache(bot.CFG.state_dir)
+    monkeypatch.setattr(bot, "CACHE", cache)
+    def fail(*args):
+        raise OSError("disk unavailable")
+    monkeypatch.setattr(bot.os, "replace", fail)
+    with pytest.raises(OSError, match="disk unavailable"):
+        bot.run_logic(wiki.site)
+    assert not wiki.saves
+    assert not bot.checkpoint_path().exists()
