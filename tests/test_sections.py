@@ -52,6 +52,27 @@ def test_request_field_includes_child_heading_but_not_next_field(mock_site):
     assert "Excluded" not in body and "Other" not in body
 
 
+def test_filing_excludes_nested_author_and_their_extension(mock_site, monkeypatch):
+    bodies = []
+    monkeypatch.setattr(bot, "visible_word_count", lambda site, body, title: bodies.append(body) or 1)
+    monkeypatch.setattr(bot, "rendered_word_count", lambda *args: 1)
+    parser = bot.AEParser(mock_site)
+    parser.board_page = "Example"
+    text = ("== Request ==\n=== Request concerning Bob ===\n"
+            "; User who is submitting this request : {{userlinks|Alice}}\n"
+            "; Additional comments:\nAlice evidence.\n"
+            "==== Statement by Bob ====\n{{ApprovedWordLimit|words=1000}}\nBob reply.\n"
+            "===== Reply details =====\nBob details.\n"
+            "==== More filing evidence ====\nAlice continuation.\n"
+            "=== Discussion concerning Bob ===\n")
+    alice, bob = parser.parse(text)[0].statements
+    assert (alice.user, alice.limit) == ("Alice", 500)
+    assert (bob.user, bob.limit) == ("Bob", 1000)
+    assert "Alice continuation." in bodies[0]
+    assert "Bob" not in bodies[0] and "ApprovedWordLimit" not in bodies[0]
+    assert "Bob reply." in bodies[1] and "Alice continuation." not in bodies[1]
+
+
 @pytest.mark.parametrize("parser_cls", [bot.SimpleBoardParser, bot.AEParser])
 def test_closed_requests_and_placeholder_statistics(mock_site, captured, parser_cls):
     tables = parser_cls(mock_site).parse(

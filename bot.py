@@ -802,6 +802,11 @@ class AEParser(BaseParser):
 
     def _collect_request_body(self, sec: RawSection, full: str) -> str:
         seg = sec.subtree_body(full)
+        # Replies have their own rows and controls. Remove their complete
+        # subtrees, retaining ordinary evidence subsections before and after.
+        for child in reversed(scan_sections(seg)):
+            if child.level == 4 and self._STMT.match(child.title):
+                seg = seg[:child.heading_start] + seg[child.subtree_end:]
         parts = []
         for m in self._PSEUDO.finditer(seg):
             start = m.end()
