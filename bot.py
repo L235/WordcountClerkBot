@@ -27,11 +27,14 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from difflib import SequenceMatcher
 from enum import Enum
 from typing import ClassVar, Type
-from datetime import datetime, timezone
+from pathlib import Path
+import json
+
+from wiki_state import read_revisions, read_contents, load_checkpoint, save_checkpoint
 import pickle
 import hashlib
 
@@ -71,6 +74,7 @@ class BotConfig:
     over_factor: float = 1.10
     
     run_interval: int = 600
+    render_refresh_interval: int = 3600
     
     red_hex: str = "#ff000040"
     amber_hex: str = "#ffff0040"
@@ -111,6 +115,7 @@ class BotConfig:
             "EVIDENCE_LIMIT_OTHER": ("evidence_limit_other", int),
             "OVER_FACTOR": ("over_factor", float),
             "RUN_INTERVAL": ("run_interval", int),
+            "RENDER_REFRESH_INTERVAL": ("render_refresh_interval", int),
             "RED_HEX": ("red_hex", str),
             "AMBER_HEX": ("amber_hex", str),
             "HEADER_TEXT": ("header_text", str),
@@ -216,15 +221,29 @@ class WordCountCache:
         self._writes = 0
         self._loaded = True
 
-    def flush(self) -> None:
+    def flush(self, *, required: bool = False) -> None:
         """Persist the cache to disk."""
         if not self._loaded:
             return
         try:
-            with open(self.path, "wb") as fh:
+            with open(self.path + ".tmp", "wb") as fh:
                 pickle.dump(self._cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(self.path + ".tmp", self.path)
         except Exception as e:
+            if required:
+                raise
             LOG.debug("Could not write wordcount cache: %s", e)
+
+    def clear(self) -> None:
+        """Invalidate counts and HTML together when dependencies may have changed."""
+        self.load()
+        self._cache.clear()
+        self._mem_cache_html.clear()
+        # Persist invalidation before a refresh can be published/checkpointed.
+        # Restarting before refreshed counts are flushed must only cause misses.
+        self.flush(required=True)
 
     def get(self, key: str) -> tuple[int, int] | None:
         return self._cache.get(key)
@@ -609,8 +628,10 @@ def scan_sections(text: str) -> list[RawSection]:
 def extract_open_cases(site: APISite) -> list[str]:
     """Extract case names from Template:ArbComOpenTasks/Cases."""
     page_text = fetch_page(site, CFG.open_cases_page)
+    return parse_open_cases(page_text)
+
+def parse_open_cases(page_text: str) -> list[str]:
     case_names = []
-    
     code = mwpfh.parse(page_text, skip_style_tags=True)
     for template in code.filter_templates():
         template_name = str(template.name).strip()
@@ -621,11 +642,12 @@ def extract_open_cases(site: APISite) -> list[str]:
                 case_names.append(str(name_param).strip())
     return case_names
 
-def extract_involved_parties(site: APISite, case_name: str) -> list[str]:
+def extract_involved_parties(site: APISite, case_name: str, page_text: str | None = None) -> list[str]:
     """Extract involved parties from a case page."""
     case_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}"
     try:
-        page_text = fetch_page(site, case_page)
+        if page_text is None:
+            page_text = fetch_page(site, case_page)
     except Exception as exc:
         raise RuntimeError(f"Could not fetch party list: {case_page}") from exc
     
@@ -768,12 +790,12 @@ class AEParser(BaseParser):
 
 
 class EvidenceParser(BaseParser):
-    def __init__(self, site: APISite, case_name: str):
+    def __init__(self, site: APISite, case_name: str, parties: list[str] | None = None):
         super().__init__(site)
         self.case_name = case_name
         self.involved_parties = {
             normalize_username(party)
-            for party in extract_involved_parties(site, case_name)
+            for party in (parties if parties is not None else extract_involved_parties(site, case_name))
         }
     
     def _get_word_limit(self, username: str) -> int:
@@ -856,13 +878,14 @@ class ParsedData:
     boards: dict[str, list[RequestTable]]
     evidence: dict[str, list[RequestTable]]
 
-def collect_all_data(site: APISite) -> ParsedData:
+def collect_all_data(site: APISite, pages: dict[str, str] | None = None) -> ParsedData:
+    read = lambda title: pages[title] if pages is not None else fetch_page(site, title)
     boards = {}
     evidence = {}
     
     for label, (page, ParserCls) in get_board_parsers().items():
         try:
-            raw = fetch_page(site, page)
+            raw = read(page)
             parser = ParserCls(site)
             parser.board_page = page  # type: ignore
             boards[label] = parser.parse(raw)
@@ -870,12 +893,15 @@ def collect_all_data(site: APISite) -> ParsedData:
             raise RuntimeError(f"Could not process board {label}") from exc
     
     try:
-        case_names = extract_open_cases(site)
+        case_names = parse_open_cases(read(CFG.open_cases_page))
         for case_name in case_names:
             evidence_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence"
             try:
-                raw = fetch_page(site, evidence_page)
-                parser = EvidenceParser(site, case_name)
+                raw = read(evidence_page)
+                parties = extract_involved_parties(
+                    site, case_name, read(f"Wikipedia:Arbitration/Requests/Case/{case_name}")
+                )
+                parser = EvidenceParser(site, case_name, parties)
                 parser.board_page = evidence_page  # type: ignore
                 evidence[case_name] = parser.parse(raw)
             except Exception as exc:
@@ -983,34 +1009,72 @@ def assemble_extended_report_from_data(data: ParsedData) -> str:
 # Logic Refactoring: Decomposed Steps
 # ---------------------------------------------------------------------------
 
-def should_run(site: APISite) -> bool:
-    """Check timestamps to see if a run is needed."""
-    target_page = pywikibot.Page(site, CFG.target_page)
-    if not target_page.exists():
-        return True # Always run if target doesn't exist
-    
-    ts_target = target_page.latest_revision.timestamp
+@dataclass
+class RunPlan:
+    sources: dict[str, int]
+    outputs: dict[str, int]
+    texts: dict[str, str]
+    cases: list[str]
+    fingerprint: str
+    refreshed_at: float
+    refresh: bool
 
-    # Check source pages
-    source_titles = [CFG.ae_page, CFG.arc_page, CFG.arca_page, CFG.open_cases_page]
-    try:
-        case_names = extract_open_cases(site)
-        for case_name in case_names:
-            source_titles.append(f"Wikipedia:Arbitration/Requests/Case/{case_name}/Evidence")
-    except Exception as e:
-        LOG.warning("Could not fetch open cases for early-exit check: %s", e)
 
-    ts_sources = []
-    for title in source_titles:
-        p = pywikibot.Page(site, title)
-        if p.exists():
-            ts_sources.append(p.latest_revision.timestamp)
-        else:
-            ts_sources.append(datetime.min.replace(tzinfo=timezone.utc))
-    
-    if not ts_sources:
-        return True  # Run if we can't determine source timestamps
-    return max(ts_sources) > ts_target
+def checkpoint_path() -> Path:
+    return Path(CFG.state_dir).expanduser() / "publication_checkpoint.json"
+
+
+def source_titles(cases: list[str]) -> list[str]:
+    titles = [CFG.ae_page, CFG.arc_page, CFG.arca_page, CFG.open_cases_page]
+    for case in cases:
+        root = f"Wikipedia:Arbitration/Requests/Case/{case}"
+        titles.extend([root, root + "/Evidence"])
+    return titles
+
+
+def run_fingerprint(site: APISite) -> str:
+    # Reconcile on configuration or algorithm changes, including new deployments.
+    digest = hashlib.sha256(json.dumps(asdict(CFG), sort_keys=True).encode())
+    digest.update(site.hostname().encode())
+    for name in ("bot.py", "wiki_state.py"):
+        digest.update(Path(__file__).with_name(name).read_bytes())
+    return digest.hexdigest()
+
+
+def prepare_run(site: APISite) -> RunPlan | None:
+    state = load_checkpoint(checkpoint_path())
+    fingerprint = run_fingerprint(site)
+    if state.get("fingerprint") != fingerprint:
+        state = {}
+    outputs = [CFG.target_page, CFG.data_page, CFG.extended_page]
+    cases = state.get("cases", [])
+    revisions = read_revisions(site, source_titles(cases) + outputs)
+    texts = {}
+    open_revision = revisions[CFG.open_cases_page]
+    if not open_revision:
+        raise RuntimeError("Open-case list is missing")
+    if open_revision != state.get("sources", {}).get(CFG.open_cases_page):
+        texts.update(read_contents(site, {CFG.open_cases_page: open_revision}))
+        cases = parse_open_cases(texts[CFG.open_cases_page])
+        new_titles = [title for title in source_titles(cases) if title not in revisions]
+        revisions.update(read_revisions(site, new_titles))
+    sources = {title: revisions[title] for title in source_titles(cases)}
+    if any(not revision for revision in sources.values()):
+        raise RuntimeError("A required source page is missing")
+    output_revisions = {title: revisions[title] for title in outputs}
+    now = time.time()
+    previous_refresh = state.get("refreshed_at", 0)
+    refresh = (not state or now < previous_refresh
+               or now - previous_refresh >= CFG.render_refresh_interval)
+    if (not refresh and sources == state.get("sources")
+            and output_revisions == state.get("outputs")):
+        return None
+    texts.update(read_contents(site, {
+        title: revision for title, revision in {**sources, **output_revisions}.items()
+        if title not in texts
+    }))
+    return RunPlan(sources, output_revisions, texts, cases, fingerprint,
+                   now if refresh else previous_refresh, refresh)
 
 @dataclass
 class ReportContent:
@@ -1046,51 +1110,48 @@ def generate_reports(data: ParsedData) -> ReportContent:
     )
     return ReportContent(text, data_tmpl, extended, stats)
 
-def publish_changes(site: APISite, content: ReportContent) -> None:
-    """Compare generated content with wiki and save if different."""
-    
-    # 1. Main Report
-    target = pywikibot.Page(site, CFG.target_page)
-    current_text = target.text if target.exists() else ""
-    
-    if content.text != current_text:
-        summary = f"updating table ({content.stats_summary}) {CFG.edit_summary_suffix}"
-        target.text = content.text
-        target.save(summary=summary, minor=False, botflag=False)
-        LOG.info("Updated target page.")
-    else:
-        LOG.info("No changes to target page.")
+def publish_changes(
+    site: APISite, content: ReportContent, plan: RunPlan
+) -> dict[str, int]:
+    """Save all outputs; a failure leaves the previous checkpoint untouched."""
+    revisions = {}
+    for title, text, summary in (
+        (CFG.target_page, content.text, "updating table"),
+        (CFG.data_page, content.data, "Updating data template"),
+        (CFG.extended_page, content.extended, "Updating extended report"),
+    ):
+        if text == plan.texts[title] and plan.outputs[title]:
+            revisions[title] = plan.outputs[title]
+            continue
+        page = pywikibot.Page(site, title)
+        page.text = text
+        saved = page.save(
+            summary=f"{summary} ({content.stats_summary}) {CFG.edit_summary_suffix}",
+            minor=False, botflag=False,
+        )
+        if saved is False:
+            raise RuntimeError(f"Save did not succeed: {title}")
+        revisions[title] = page.latest_revision_id
+        LOG.info("Updated %s", title)
+    return revisions
 
-    # 2. Data Template
-    data_page = pywikibot.Page(site, CFG.data_page)
-    current_data = data_page.text if data_page.exists() else ""
-    
-    if content.data != current_data:
-        summary = f"Updating data template ({content.stats_summary}) {CFG.edit_summary_suffix}"
-        data_page.text = content.data
-        data_page.save(summary=summary, minor=False, botflag=False)
-        LOG.info("Updated data template page.")
-
-    # 3. Extended Report
-    ext_page = pywikibot.Page(site, CFG.extended_page)
-    current_ext = ext_page.text if ext_page.exists() else ""
-    
-    if content.extended != current_ext:
-        summary = f"Updating extended report ({content.stats_summary}) {CFG.edit_summary_suffix}"
-        ext_page.text = content.extended
-        ext_page.save(summary=summary, minor=False, botflag=False)
-        LOG.info("Updated extended report page.")
 
 def run_logic(site: APISite) -> None:
-    """Orchestrate a single run."""
-    if not should_run(site):
-        LOG.info("No new edits on source pages; exiting early.")
+    """Commit the exact input revisions only after complete publication."""
+    plan = prepare_run(site)
+    if plan is None:
+        LOG.info("No source/output changes; exiting early.")
         return
-
-    LOG.info("Changes detected. Collecting data...")
-    data = collect_all_data(site)
+    if plan.refresh and CACHE is not None:
+        CACHE.clear()
+    data = collect_all_data(site, plan.texts)
     reports = generate_reports(data)
-    publish_changes(site, reports)
+    outputs = publish_changes(site, reports, plan)
+    save_checkpoint(checkpoint_path(), {
+        "sources": plan.sources, "outputs": outputs, "cases": plan.cases,
+        "fingerprint": plan.fingerprint, "refreshed_at": plan.refreshed_at,
+    })
+
 
 def main(loop: bool, debug: bool) -> None:
     """

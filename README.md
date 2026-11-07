@@ -37,6 +37,7 @@ These variables are **required** when using `run.sh`:
 | `EVIDENCE_LIMIT_OTHER` | `500`                                                        | Word limit for other users          |
 | `OVER_FACTOR`          | `1.10`                                                       | "within" multiplier                 |
 | `RUN_INTERVAL`         | `600`                                                        | Seconds between runs                |
+| `RENDER_REFRESH_INTERVAL` | `3600`                                                    | Maximum interval between full rendered-count refreshes |
 | `RED_HEX`              | `#ffcccc`                                                    | Over-limit highlight color          |
 | `AMBER_HEX`            | `#ffffcc`                                                    | Within-limit highlight color        |
 | `PLACEHOLDER_HEADING`  | `statement by {other-editor}`                                | Heading template to ignore          |
@@ -77,6 +78,19 @@ python bot.py
 ---
 
 ## Development
+
+The bot batches revision checks and records the exact source revisions processed
+in `STATE_DIR/publication_checkpoint.json` only after all three outputs succeed.
+No-op source edits advance this checkpoint too. Failed reads, rendering, or saves
+leave the pass pending for retry; case party pages and output-page changes are
+included in the checks. Source content is fetched by revision ID so edits made
+during a pass are picked up by the next poll.
+
+Code/configuration changes trigger reconciliation. Rendered counts and their HTML
+cache are refreshed together every `RENDER_REFRESH_INTERVAL` seconds (one hour by
+default), even without source edits, to pick up changed transclusions. Source
+edits do not postpone this refresh. Keep `STATE_DIR` on persistent storage and
+run one publisher per state directory.
 
 - Code is written for **Python 3.11**.
 - Dependencies managed in `requirements.txt`.
