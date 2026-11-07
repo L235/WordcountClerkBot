@@ -79,6 +79,12 @@ python bot.py
 
 ## Development
 
+When an author has multiple statement sections in the same request, the report
+and status-template data use their combined word count. The highest recognized
+word-limit allowance applies to that total; allowances are not added together.
+The report retains links to each contributing section. Different requests and
+usernames that differ in capitalization after the first character stay separate.
+
 The bot batches revision checks and records the exact source revisions processed
 in `STATE_DIR/publication_checkpoint.json` only after all three outputs succeed.
 No-op source edits advance this checkpoint too. Failed reads, rendering, or saves

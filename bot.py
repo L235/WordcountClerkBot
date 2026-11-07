@@ -27,7 +27,7 @@ import os
 import re
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from typing import ClassVar, Type
 from pathlib import Path
@@ -429,6 +429,14 @@ class Statement:
     expanded: int
     limit: int
     has_status_template: bool = False
+    anchors: tuple[str, ...] = ()
+
+    def section_links(self, board_page: str) -> str:
+        anchors = self.anchors or (self.anchor,)
+        return " / ".join(
+            f"[[{board_page}#{anchor}|{'link' if len(anchors) == 1 else f'link {index}'}]]"
+            for index, anchor in enumerate(anchors, 1)
+        )
 
     @property
     def status(self) -> Status:
@@ -454,6 +462,26 @@ class RequestTable:
     statements: list[Statement]
     closed: bool = False
 
+    def author_totals(self) -> list[Statement]:
+        """One total per author/request, retaining links to every source section."""
+        totals: dict[str, Statement] = {}
+        for statement in self.statements:
+            user = normalize_username(statement.user)
+            if not user:
+                continue
+            anchors = statement.anchors or (statement.anchor,)
+            if user not in totals:
+                totals[user] = replace(statement, user=user, anchors=anchors)
+                continue
+            total = totals[user]
+            total.visible += statement.visible
+            total.expanded += statement.expanded
+            # An extension is a total allowance, not another additive allowance.
+            total.limit = max(total.limit, statement.limit)
+            total.has_status_template |= statement.has_status_template
+            total.anchors = tuple(dict.fromkeys(total.anchors + anchors))
+        return list(totals.values())
+
     HEADER: ClassVar[str] = (
         "{| class=\"wikitable sortable\"\n"
         "! User !! Section !! Words !! Uncollapsed&nbsp;words !! Limit !! Status\n"
@@ -474,14 +502,14 @@ class RequestTable:
             return heading_line + "\n''No word‑limited statements.''"
 
         rows = []
-        for s in self.statements:
+        for s in self.author_totals():
             if not s.user:
                 continue
             style = f" style=\"background:{s.colour}\"" if s.colour else ""
             rows.append(
                 f"|-{style}\n"
                 f"| [[User:{s.user}|{s.user}]] "
-                f"|| [[{board_page}#{s.anchor}|link]] "
+                f"|| {s.section_links(board_page)} "
                 f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value}"
             )
         return heading_line + "\n" + self.HEADER + "\n".join(rows) + "\n|}"
@@ -496,7 +524,7 @@ class RequestTable:
             return heading_line + "\n''No word‑limited statements.''"
 
         rows = []
-        for s in self.statements:
+        for s in self.author_totals():
             if not s.user:
                 continue
             style = f" style=\"background:{s.colour}\"" if s.colour else ""
@@ -520,7 +548,7 @@ class RequestTable:
             rows.append(
                 f"|-{style}\n"
                 f"| [[User:{s.user}|{s.user}]] "
-                f"|| [[{board_page}#{s.anchor}|link]] "
+                f"|| {s.section_links(board_page)} "
                 f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value} "
                 f"{template_cell}"
             )
@@ -1033,13 +1061,13 @@ def assemble_data_template_from_data(parsed_data: ParsedData) -> str:
     for label, tables in parsed_data.boards.items():
         for tbl in tables:
             data.setdefault(label, {}).setdefault(tbl.title, {})
-            for stmt in tbl.statements:
+            for stmt in tbl.author_totals():
                 data[label][tbl.title][stmt.user] = stmt
     
     for case_name, tables in parsed_data.evidence.items():
         for tbl in tables:
             data.setdefault("Case pages", {}).setdefault(tbl.title, {})
-            for stmt in tbl.statements:
+            for stmt in tbl.author_totals():
                 data["Case pages"][tbl.title][stmt.user] = stmt
 
     parts: list[str] = []
@@ -1188,7 +1216,7 @@ def generate_reports(data: ParsedData) -> ReportContent:
         all_tables.extend(tables)
 
     open_tables = [tbl for tbl in all_tables if not tbl.closed]
-    all_statements = [s for tbl in open_tables for s in tbl.statements]
+    all_statements = [s for tbl in open_tables for s in tbl.author_totals()]
     
     over = sum(1 for s in all_statements if s.status == Status.OVER)
     within = sum(1 for s in all_statements if s.status == Status.WITHIN)
