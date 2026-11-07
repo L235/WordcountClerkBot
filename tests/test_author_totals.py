@@ -91,3 +91,27 @@ def test_repeated_author_heading_retains_both_source_links(mock_site, monkeypatc
 def test_heading_ids_include_non_author_collisions_across_requests():
     sections = bot.scan_sections("== Same ==\n=== Same ===\n== Same ==\n=== Same_2 ===\n")
     assert [section.anchor for section in sections] == ["Same", "Same_2", "Same_3", "Same_2_2"]
+
+
+@pytest.mark.parametrize("wrapper", ["<!--\n{}\n-->", "<nowiki>\n{}\n</nowiki>", "<pre>\n{}\n</pre>"])
+def test_literal_headings_do_not_reserve_ids_or_become_evidence(mock_site, monkeypatch, wrapper):
+    monkeypatch.setattr(bot, "visible_word_count", lambda *args: 1)
+    monkeypatch.setattr(bot, "rendered_word_count", lambda *args: 1)
+    parser = bot.EvidenceParser(mock_site, "Example", [])
+    parser.board_page = "Example"
+    text = wrapper.format("== Evidence presented by Alice ==") + "\n== Evidence presented by Alice ==\nEvidence."
+    statements = parser.parse(text)[0].statements
+    assert len(statements) == 1
+    assert statements[0].anchor == "Evidence_presented_by_Alice"
+
+
+def test_level_one_headings_reserve_anchor_ids():
+    sections = bot.scan_sections("= Same =\n== Same ==\n")
+    assert [section.anchor for section in sections] == ["Same", "Same_2"]
+
+
+def test_real_headings_inside_html_keep_offsets():
+    text = '<div title="Details">\n== Same ==\nBody.\n</div>\n== Same ==\nEnd.'
+    sections = bot.scan_sections(text)
+    assert [section.anchor for section in sections] == ["Same", "Same_2"]
+    assert text[sections[0].heading_start:].startswith("== Same ==")

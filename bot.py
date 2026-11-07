@@ -281,7 +281,7 @@ COUNT_CACHE_VERSION = 2
 ###############################################################################
 
 WORD_RE        = re.compile(r"\b\w+(?:['-]\w+)*\b")
-HEADING_RE     = re.compile(r"^(={2,6})\s*(.*?)\s*\1\s*$", re.M)
+HEADING_RE     = re.compile(r"^(={1,6})\s*(.*?)\s*\1\s*$", re.M)
 PAREN_RE = re.compile(r"^(.*?)(\s*\([^()]+\)\s*)$")
 HAT_OPEN_RE = re.compile(r"\{\{\s*hat\s*(?=[|}])", re.I)
 _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
@@ -719,7 +719,13 @@ class RawSection:
 
 
 def scan_sections(text: str) -> list[RawSection]:
-    heads = list(HEADING_RE.finditer(text))
+    # Only parsed headings reserve IDs. Equal-length markers retain source
+    # offsets while excluding examples in comments, nowiki, and other literals.
+    code = mwpfh.parse(text)
+    for heading in code.filter_headings():
+        code.replace(heading, mwpfh.nodes.Text("\0" * len(str(heading))), recursive=True)
+    markers = str(code)
+    heads = [h for h in HEADING_RE.finditer(text) if markers[h.start()] == "\0"]
     anchors = list(heading_anchors(h.group(2) for h in heads))
     return [
         RawSection(
