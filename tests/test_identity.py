@@ -11,6 +11,8 @@ import bot
     ("Alias", "[[User:First|Alias]] and [[User:Second|Alias]]", "Alias"),
     ("[[User:Actual|Alias]]", "Other [[User:Person]]", "Actual"),
     ("Alice (about [[User:Bob|Bob]])", "[[User:Alice|Alice]]", "Alice"),
+    ("Alice (reply to [[User:Bob|Alice]])", "[[User:Alice|Alice]]", "Alice"),
+    ("[[User:Actual|Alias]] (reply to [[User:Bob|Alias]])", "", "Actual"),
     ("[[User:Actual|Alias]] (about [[User:Bob|Bob]])", "", "Actual"),
     ("[[User:Alice (continued)|Alice (continued)]]", "", "Alice (continued)"),
     ("Alice (continued)", "[[User:Alice|Alice]]", "Alice"),
@@ -63,12 +65,13 @@ def test_canonical_username_data_also_accepts_underscore_form():
     assert "| Example_User\n         | Example User =" in output
 
 
-def test_contextual_heading_link_does_not_grant_party_limit(mock_site, monkeypatch):
+@pytest.mark.parametrize("label", ["Bob", "Alice"])
+def test_contextual_heading_link_does_not_grant_party_limit(mock_site, monkeypatch, label):
     monkeypatch.setattr(bot, "visible_word_count", lambda *args: 600)
     monkeypatch.setattr(bot, "rendered_word_count", lambda *args: 600)
     parser = bot.EvidenceParser(mock_site, "Example", ["Bob"])
     parser.board_page = "Example/Evidence"
-    statement = parser.parse("== Evidence presented by Alice (about [[User:Bob|Bob]]) ==\nEvidence. [[User:Alice|Alice]]")[0].statements[0]
+    statement = parser.parse(f"== Evidence presented by Alice (about [[User:Bob|{label}]]) ==\nEvidence. [[User:Alice|Alice]]")[0].statements[0]
     assert statement.user == "Alice" and statement.limit == 500
     assert statement.status == bot.Status.OVER
 

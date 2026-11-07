@@ -369,8 +369,26 @@ def resolve_username(header: str, body: str, controls: StatementControls | None 
     simple = normalize_username(strip_parenthetical(plain, body)) or ""
     # A link identifies the author only when its label is the author portion,
     # not when it merely names someone in a trailing contextual qualifier.
+    heading_code = mwpfh.parse(header)
+    links = heading_code.filter_wikilinks()
+    markers = []
+    for index, link in enumerate(links):
+        marker = f"CLERKBOTLINK{index}TOKEN"
+        while marker in header:
+            marker += "X"
+        markers.append(marker)
+        heading_code.replace(link, marker, recursive=True)
+    author_markup = heading_code.strip_code().strip()
+    if simple != normalize_username(plain):
+        # Masking links preserves their positions while keeping parentheses
+        # inside link targets/labels out of the qualifier boundary calculation.
+        qualifier = PAREN_RE.match(author_markup)
+        if qualifier:
+            author_markup = qualifier.group(1).rstrip()
     heading_users = set()
-    for link in mwpfh.parse(header).filter_wikilinks():
+    for link, marker in zip(links, markers):
+        if marker not in author_markup:
+            continue
         targets = user_links(str(link))
         label = normalize_username(mwpfh.parse(str(link)).strip_code().strip())
         if targets and label in {simple, normalize_username(plain)}:
