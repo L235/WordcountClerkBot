@@ -255,6 +255,8 @@ class WordCountCache:
 
 # Global cache instance
 CACHE: WordCountCache | None = None
+# Invalidate counts produced by older algorithms, including raw-text fallbacks.
+COUNT_CACHE_VERSION = 2
 
 ###############################################################################
 # Regex helpers & constants                                                   #
@@ -487,13 +489,13 @@ def _api_render(site: APISite, wikitext: str, title: str | None = None) -> str:
         params["title"] = title
     req = pwb_api.Request(site=site, parameters=params)
     LOG.info("Making render API call for wikitext (length: %d)", len(wikitext))
+    data = req.submit()  # Fail the pass rather than publish/cache an estimate.
     try:
-        data = req.submit()
-    except Exception as e:
-        LOG.warning("parse API failed: %s", e)
-        html = wikitext  # fallback
-    else:
-        html = data.get("parse", {}).get("text", {}).get("*", "") or wikitext
+        html = data["parse"]["text"]["*"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError("Parse API response is missing rendered HTML") from exc
+    if not isinstance(html, str):
+        raise RuntimeError("Parse API returned non-text HTML")
 
     # Cache the rendered HTML
     CACHE.cache_rendered_html(key, html)
@@ -521,7 +523,7 @@ def _count_rendered_visible(
     except Exception:
         host = str(site)
         path = ""
-    raw_key = f"{host}|{path}|{title or ''}|{wikitext}".encode("utf-8")
+    raw_key = f"{COUNT_CACHE_VERSION}|{host}|{path}|{title or ''}|{wikitext}".encode("utf-8")
     cache_key = hashlib.sha1(raw_key).hexdigest()
 
     cached_val = CACHE.get(cache_key)
@@ -624,9 +626,8 @@ def extract_involved_parties(site: APISite, case_name: str) -> list[str]:
     case_page = f"Wikipedia:Arbitration/Requests/Case/{case_name}"
     try:
         page_text = fetch_page(site, case_page)
-    except Exception:
-        LOG.warning("Could not fetch case page: %s", case_page)
-        return []
+    except Exception as exc:
+        raise RuntimeError(f"Could not fetch party list: {case_page}") from exc
     
     parties = []
     sections = scan_sections(page_text)
@@ -865,9 +866,8 @@ def collect_all_data(site: APISite) -> ParsedData:
             parser = ParserCls(site)
             parser.board_page = page  # type: ignore
             boards[label] = parser.parse(raw)
-        except Exception as e:
-            LOG.warning("Could not process board %s: %s", label, e)
-            boards[label] = []
+        except Exception as exc:
+            raise RuntimeError(f"Could not process board {label}") from exc
     
     try:
         case_names = extract_open_cases(site)
@@ -878,11 +878,10 @@ def collect_all_data(site: APISite) -> ParsedData:
                 parser = EvidenceParser(site, case_name)
                 parser.board_page = evidence_page  # type: ignore
                 evidence[case_name] = parser.parse(raw)
-            except Exception as e:
-                LOG.warning("Could not process evidence page for case %s: %s", case_name, e)
-                evidence[case_name] = []
-    except Exception as e:
-        LOG.warning("Could not fetch open cases: %s", e)
+            except Exception as exc:
+                raise RuntimeError(f"Could not process evidence for {case_name}") from exc
+    except Exception as exc:
+        raise RuntimeError("Could not collect complete case data") from exc
     
     return ParsedData(boards, evidence)
 
