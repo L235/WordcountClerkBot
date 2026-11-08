@@ -283,9 +283,6 @@ COUNT_CACHE_VERSION = 2
 
 WORD_RE        = re.compile(r"\b\w+(?:['-]\w+)*\b")
 HEADING_RE     = re.compile(r"^(={2,6})\s*(.*?)\s*\1\s*$", re.M)
-AWL_RE         = re.compile(r"\{\{\s*ApprovedWordLimit[^}]*?\bwords\s*=\s*(\d+)", re.I | re.S)
-TEMPLATE_RE    = re.compile(r"\{\{\s*(?:ApprovedWordLimit|ACWordStatus)[^}]*}}", re.I | re.S)
-ACWORDSTATUS_RE = re.compile(r"\{\{\s*ACWordStatus\b", re.I)
 PAREN_RE = re.compile(r"^(.*?)(\s*\([^()]+\)\s*)$")
 HAT_OPEN_RE = re.compile(r"\{\{\s*hat\s*(?=[|}])", re.I)
 _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
@@ -315,7 +312,56 @@ def user_links(body: str) -> list[str]:
             links.append(rest.split("/")[0].strip())
     return links
 
-def fuzzy_username(header: str, body: str) -> str:
+STATUS_TEMPLATE_NAMES = {"acwordstatus", "arbitration committee word status"}
+
+
+def normalize_template_name(name: str) -> str:
+    name = re.sub(r"\s+", " ", name.replace("_", " ")).strip().lower()
+    # A leading colon selects mainspace unless a namespace is explicit.
+    if name.startswith(":"):
+        target = name[1:].strip()
+        if not target.startswith("template:"):
+            return name
+        name = target
+    if name.startswith("template:"):
+        name = name.partition(":")[2].strip()
+    return name
+
+
+@dataclass
+class StatementControls:
+    body: str
+    user: str | None = None
+    limit: int | None = None
+    has_status: bool = False
+
+
+def parse_statement_controls(body: str) -> StatementControls:
+    """Interpret and exclude status/limit templates using the same name rules."""
+    code = mwpfh.parse(body)
+    result = StatementControls(body)
+    remove = []
+    for template in code.filter_templates():
+        name = normalize_template_name(str(template.name))
+        if name in STATUS_TEMPLATE_NAMES:
+            result.has_status = True
+            if result.user is None and template.has("user"):
+                result.user = str(template.get("user").value).strip() or None
+            remove.append(template)
+        elif name == "approvedwordlimit":
+            if result.limit is None and template.has("words"):
+                raw = str(template.get("words").value).strip()
+                if re.fullmatch(r"[0-9]+", raw) and int(raw) > 0:
+                    result.limit = int(raw)
+            remove.append(template)
+    # Children first: deleting an outer template also deletes any nested nodes.
+    for template in reversed(remove):
+        code.remove(template, recursive=True)
+    result.body = str(code)
+    return result
+
+
+def fuzzy_username(header: str, body: str, controls: StatementControls | None = None) -> str:
     """
     Find best matching username from header and body links.
     """
@@ -323,18 +369,9 @@ def fuzzy_username(header: str, body: str) -> str:
         return s[0].upper() + s[1:] if s else s
 
     # --- Template override (top priority) ---
-    try:
-        code = mwpfh.parse(body)
-        def _norm(name: str) -> str:
-            return re.sub(r"\s+", " ", name.replace("_", " ")).strip().lower()
-        for tmpl in code.filter_templates():
-            tname = _norm(str(tmpl.name))
-            if tname in {"acwordstatus", "arbitration committee word status"} and tmpl.has("user"):
-                raw = str(tmpl.get("user").value).strip()
-                if raw:
-                    return capitalize_first(raw)
-    except Exception:
-        pass
+    controls = controls if controls is not None else parse_statement_controls(body)
+    if controls.user:
+        return capitalize_first(controls.user)
 
     # ---- Existing heuristics (header + body links) ----
     simple = capitalize_first(strip_parenthetical(header, body))
@@ -685,26 +722,21 @@ class BaseParser:
         self.site = site
 
     def _extract_limit(self, body: str, default: int | None = None) -> int:
-        m = AWL_RE.search(body)
-        if m:
-            try:
-                return int(m.group(1))
-            except ValueError:
-                LOG.debug("Invalid ApprovedWordLimit value: %s", m.group(1))
-        return default or CFG.default_limit
+        return parse_statement_controls(body).limit or default or CFG.default_limit
 
     def _make_statement(
         self, raw_user: str, body: str, anchor: str, limit: int | None = None
     ) -> Statement:
-        limit_val = self._extract_limit(body, limit)
-        has_acwordstatus = bool(ACWORDSTATUS_RE.search(body))
-        body_no_templates = TEMPLATE_RE.sub("", body)
+        controls = parse_statement_controls(body)
+        limit_val = controls.limit or limit or CFG.default_limit
+        has_acwordstatus = controls.has_status
+        body_no_templates = controls.body
         # Pass board_page as title for proper template rendering context.
         # Templates like {{tq}} only work on talk/project pages.
         visible = visible_word_count(self.site, body_no_templates, self.board_page)
         expanded = rendered_word_count(self.site, body_no_templates, self.board_page)
         return Statement(
-            fuzzy_username(raw_user, body),
+            fuzzy_username(raw_user, body, controls),
             anchor,
             visible,
             expanded,
@@ -979,6 +1011,9 @@ def assemble_data_template_from_data(parsed_data: ParsedData) -> str:
     parts: list[str] = []
     parts.append('{{#switch: {{{page}}}')
     for label, requests in data.items():
+        if label in get_board_parsers():
+            # MediaWiki #switch fall-through: full title and short label agree.
+            parts.append(' | ' + get_board_parsers()[label][0])
         parts.append(' | ' + label + ' = {{#switch: {{{section}}}')
         for req, users in requests.items():
             parts.append('     | ' + req + ' = {{#switch: {{{user}}}')
