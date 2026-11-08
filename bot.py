@@ -774,14 +774,7 @@ class AEParser(BaseParser):
                 raw_user = self._STMT.sub("", sec.title)
                 if is_placeholder_user(raw_user):
                     continue
-                end = sec.subtree_end
-                for child in sections[i + 1:]:
-                    if child.heading_start >= end:
-                        break
-                    if child.level in {3, 4} and self._STMT.match(child.title):
-                        end = child.heading_start
-                        break
-                body = text[sec.start:end]
+                body = self._without_nested_replies(sec, text)
                 current.statements.append(
                     self._make_statement(raw_user, body, slugify(sec.title))
                 )
@@ -800,13 +793,17 @@ class AEParser(BaseParser):
         m = self._REQ_USER.search(sec.body(full))
         return m.group(1).strip() if m else ""
 
-    def _collect_request_body(self, sec: RawSection, full: str) -> str:
+    def _without_nested_replies(self, sec: RawSection, full: str) -> str:
         seg = sec.subtree_body(full)
         # Replies have their own rows and controls. Remove their complete
         # subtrees, retaining ordinary evidence subsections before and after.
         for child in reversed(scan_sections(seg)):
             if child.level == 4 and self._STMT.match(child.title):
                 seg = seg[:child.heading_start] + seg[child.subtree_end:]
+        return seg
+
+    def _collect_request_body(self, sec: RawSection, full: str) -> str:
+        seg = self._without_nested_replies(sec, full)
         parts = []
         for m in self._PSEUDO.finditer(seg):
             start = m.end()

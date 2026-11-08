@@ -44,6 +44,29 @@ def test_nested_author_not_double_counted(mock_site, captured):
     assert captured["Bob"].strip() == "Bob."
 
 
+def test_parent_continues_after_nested_replies_without_inheriting_limits(mock_site, monkeypatch):
+    bodies = []
+    monkeypatch.setattr(bot, "visible_word_count", lambda site, body, title: bodies.append(body) or 1)
+    monkeypatch.setattr(bot, "rendered_word_count", lambda *args: 1)
+    parser = bot.AEParser(mock_site)
+    parser.board_page = "Example"
+    text = ("== Request ==\n=== Statement by Alice ===\nAlice intro.\n"
+            "==== Statement by Bob ====\n{{ApprovedWordLimit|words=1000}}\nBob reply.\n"
+            "===== Reply detail =====\nBob details.\n"
+            "==== Additional evidence ====\nAlice continuation.\n"
+            "==== Statement by Carol ====\nCarol reply.\n"
+            "==== Final evidence ====\nAlice conclusion.\n")
+    alice, bob, carol = parser.parse(text)[0].statements
+    assert (alice.user, alice.limit) == ("Alice", 500)
+    assert (bob.user, bob.limit) == ("Bob", 1000)
+    assert carol.user == "Carol"
+    assert all(part in bodies[0] for part in ("Alice intro.", "Alice continuation.", "Alice conclusion."))
+    assert "Bob" not in bodies[0] and "Carol" not in bodies[0]
+    assert "Bob reply." in bodies[1] and "Bob details." in bodies[1]
+    assert "Alice" not in bodies[1] and "Carol" not in bodies[1]
+    assert bodies[2].strip() == "Carol reply."
+
+
 def test_request_field_includes_child_heading_but_not_next_field(mock_site):
     text = "== Case ==\n=== Request concerning Bob ===\n;Additional comments:\nFirst.\n==== Details ====\nMore.\n;Notification:\nExcluded.\n=== Discussion ===\nOther."
     request = bot.scan_sections(text)[1]
