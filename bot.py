@@ -46,6 +46,8 @@ from pywikibot.site import APISite
 from pywikibot.tools import normalize_username
 import mwparserfromhell as mwpfh
 from bs4 import BeautifulSoup
+import tinycss2
+from tinycss2.color4 import parse_color
 
 ###############################################################################
 # Configuration                                                               #
@@ -622,6 +624,154 @@ def _api_render(site: APISite, wikitext: str, title: str | None = None) -> str:
     CACHE.cache_rendered_html(key, html)
     return html
 
+def valid_literal_color(token) -> bool:
+    """Validate CSS Color 4 literal syntax without converting channel values.
+
+    tinycss2's color conversion accepts some invalid legacy functions and
+    rejects valid mixed modern channels/none alpha, so validate functions here.
+    https://www.w3.org/TR/css-color-4/#color-syntax
+    """
+    if token.type != "function":
+        return token.type in {"ident", "hash"} and parse_color(token) is not None
+    name = token.lower_name
+    args = [part for part in token.arguments if part.type not in {"whitespace", "comment"}]
+    legacy = any(part == "," for part in args)
+    if legacy:
+        if (name not in {"rgb", "rgba", "hsl", "hsla"}
+                or len(args) not in {5, 7} or not all(part == "," for part in args[1::2])):
+            return False
+        args = args[::2]
+    else:
+        if name == "color":
+            if not args or args[0].type != "ident" or args[0].lower_value not in {
+                "srgb", "srgb-linear", "display-p3", "display-p3-linear", "a98-rgb",
+                "prophoto-rgb", "rec2020", "xyz", "xyz-d50", "xyz-d65",
+            }:
+                return False
+            args = args[1:]
+        if len(args) == 5 and args[3] == "/":
+            args = args[:3] + args[4:]
+        elif len(args) != 3:
+            return False
+
+    def missing(part):
+        return not legacy and part.type == "ident" and part.lower_value == "none"
+
+    def channel(part):
+        return part.type in {"number", "percentage"} or missing(part)
+
+    def hue(part):
+        return (part.type == "number" or missing(part)
+                or (part.type == "dimension" and part.lower_unit in {"deg", "grad", "rad", "turn"}))
+
+    if len(args) == 4 and not channel(args[3]):
+        return False
+    channels = args[:3]
+    if name in {"rgb", "rgba"}:
+        return (all(channel(part) for part in channels)
+                and (not legacy or len({part.type for part in channels}) == 1))
+    if name in {"hsl", "hsla", "hwb"}:
+        return (hue(channels[0]) and all(
+            part.type == "percentage" if legacy else channel(part)
+            for part in channels[1:]))
+    if name in {"lch", "oklch"}:
+        return all(channel(part) for part in channels[:2]) and hue(channels[2])
+    if name in {"lab", "oklab", "color"}:
+        return all(channel(part) for part in channels)
+    return False
+
+
+def literal_style_exclusion(name: str, values: list) -> bool | None:
+    """Validate literal property values; None means invalid/unsupported.
+
+    This is not computed style: variables, math, and inherited styles require
+    browser context. Only validated literal values participate in the cascade.
+    """
+    words = [token.lower_value for token in values if token.type == "ident"]
+    if len(values) == 1 and words and words[0] in {
+        "initial", "inherit", "unset", "revert", "revert-layer",
+    }:
+        return False
+    if name == "display":
+        if len(words) != len(values) or len(set(words)) != len(words):
+            return None
+        outside = {"block", "inline", "run-in"}
+        inside = {"flow", "flow-root", "table", "flex", "grid", "ruby"}
+        single = {
+            "none", "contents", "inline-block", "inline-table", "inline-flex", "inline-grid",
+            "table-row-group", "table-header-group", "table-footer-group", "table-row",
+            "table-cell", "table-column-group", "table-column", "table-caption",
+            "ruby-base", "ruby-text", "ruby-base-container", "ruby-text-container",
+        }
+        if len(words) == 1 and words[0] in single:
+            return words[0] == "none"
+        parts = set(words)
+        allowed_inside = {"flow", "flow-root"} if "list-item" in parts else inside
+        allowed = outside | allowed_inside | {"list-item"}
+        if (parts <= allowed and len(parts & outside) <= 1
+                and len(parts & allowed_inside) <= 1):
+            return False
+        return None
+
+    lines = {"underline", "overline", "line-through", "blink"}
+    exclusive_lines = {"none", "spelling-error", "grammar-error"}
+    seen_lines = set()
+    seen = set()
+    length_units = {
+        "px", "cm", "mm", "q", "in", "pc", "pt", "em", "rem", "ex", "rex", "ch", "rch",
+        "cap", "rcap", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax",
+        "svw", "svh", "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax",
+        "dvw", "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+    }
+    for token in values:
+        word = token.lower_value if token.type == "ident" else None
+        if word in lines | exclusive_lines:
+            if (word in seen_lines or (seen_lines and
+                    (word in exclusive_lines or seen_lines & exclusive_lines))):
+                return None
+            seen_lines.add(word)
+            continue
+        if name == "text-decoration-line":
+            return None
+        if word in {"solid", "double", "dotted", "dashed", "wavy"}:
+            category = "style"
+        elif (word in {"auto", "from-font"} or token.type == "percentage"
+              or (token.type == "number" and token.value == 0)
+              or (token.type == "dimension" and token.lower_unit in length_units)):
+            category = "thickness"
+        else:
+            if not valid_literal_color(token):
+                return None
+            category = "color"
+        if category in seen:
+            return None
+        seen.add(category)
+    return "line-through" in seen_lines
+
+
+def excluded_inline_style(style: str) -> bool:
+    """Recognize literal hiding/strike declarations, respecting order/importance."""
+    effective = {}
+    for declaration in tinycss2.parse_declaration_list(style, skip_comments=True, skip_whitespace=True):
+        if declaration.type != "declaration":
+            continue
+        name = declaration.lower_name
+        if name not in {"display", "text-decoration", "text-decoration-line"}:
+            continue
+        values = [token for token in declaration.value if token.type not in {"whitespace", "comment"}]
+        if not values or any(token.type == "error" for token in values):
+            continue
+        excluded = literal_style_exclusion(name, values)
+        if excluded is None:
+            continue
+        key = "display" if name == "display" else "decoration"
+        previous = effective.get(key)
+        if previous and previous[0] and not declaration.important:
+            continue
+        effective[key] = (declaration.important, excluded)
+    return any(excluded for _, excluded in effective.values())
+
+
 def _count_rendered_visible(
     site: APISite, wikitext: str, title: str | None = None
 ) -> tuple[int, int]:
@@ -661,13 +811,14 @@ def _count_rendered_visible(
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.select("ol.references, div.references, div.reflist"):
         tag.decompose()
-    for tag in soup.select('[style*="display:none" i]'):
-        tag.decompose()
+    for tag in soup.select("[style]"):
+        if tag.attrs is not None and excluded_inline_style(tag.get("style", "")):
+            tag.decompose()
     for tag in soup.select("[hidden], [aria-hidden='true']"):
         tag.decompose()
     for tag in soup.select(".mw-collapsed, .mw-collapsible-content"):
         tag.decompose()
-    for tag in soup.select('[style*="text-decoration:line-through" i], s, strike, del'):
+    for tag in soup.select("s, strike, del"):
         tag.decompose()
     for tag in soup.select("div#siteSub, div#contentSub, div#jump-to-nav"):
         tag.decompose()
