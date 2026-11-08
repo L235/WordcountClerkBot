@@ -27,7 +27,7 @@ import os
 import re
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from typing import ClassVar, Type
 from pathlib import Path
@@ -281,15 +281,29 @@ COUNT_CACHE_VERSION = 2
 ###############################################################################
 
 WORD_RE        = re.compile(r"\b\w+(?:['-]\w+)*\b")
-HEADING_RE     = re.compile(r"^(={2,6})\s*(.*?)\s*\1\s*$", re.M)
+HEADING_RE     = re.compile(r"^(={1,6})\s*(.*?)\s*\1\s*$", re.M)
 PAREN_RE = re.compile(r"^(.*?)(\s*\([^()]+\)\s*)$")
 HAT_OPEN_RE = re.compile(r"\{\{\s*hat\s*(?=[|}])", re.I)
 _TS_RE = re.compile(r"\d{1,2}:\d{2}, \d{1,2} [A-Z][a-z]+ \d{4} \(UTC\)")
 
 def slugify(s: str) -> str:
     """Convert a heading into a MediaWiki anchor (no spaces, punctuation stripped)."""
-    text = mwpfh.parse(s, skip_style_tags=True).strip_code()
+    text = mwpfh.parse(str(s)).strip_code()
     return re.sub(r"\s+", "_", text).strip("_")
+
+
+def heading_anchors(titles):
+    """Allocate unique section IDs across the whole page, including non-authors."""
+    used = set()
+    for title in titles:
+        base = slugify(title)
+        anchor = base
+        suffix = 2
+        while anchor in used:
+            anchor = f"{base}_{suffix}"
+            suffix += 1
+        used.add(anchor)
+        yield anchor
 
 def strip_parenthetical(username: str, body: str) -> str:
     """Remove parenthetical content from username if not referenced in body."""
@@ -429,6 +443,14 @@ class Statement:
     expanded: int
     limit: int
     has_status_template: bool = False
+    anchors: tuple[str, ...] = ()
+
+    def section_links(self, board_page: str) -> str:
+        anchors = self.anchors or (self.anchor,)
+        return " / ".join(
+            f"[[{board_page}#{anchor}|{'link' if len(anchors) == 1 else f'link {index}'}]]"
+            for index, anchor in enumerate(anchors, 1)
+        )
 
     @property
     def status(self) -> Status:
@@ -454,6 +476,26 @@ class RequestTable:
     statements: list[Statement]
     closed: bool = False
 
+    def author_totals(self) -> list[Statement]:
+        """One total per author/request, retaining links to every source section."""
+        totals: dict[str, Statement] = {}
+        for statement in self.statements:
+            user = normalize_username(statement.user)
+            if not user:
+                continue
+            anchors = statement.anchors or (statement.anchor,)
+            if user not in totals:
+                totals[user] = replace(statement, user=user, anchors=anchors)
+                continue
+            total = totals[user]
+            total.visible += statement.visible
+            total.expanded += statement.expanded
+            # An extension is a total allowance, not another additive allowance.
+            total.limit = max(total.limit, statement.limit)
+            total.has_status_template |= statement.has_status_template
+            total.anchors = tuple(dict.fromkeys(total.anchors + anchors))
+        return list(totals.values())
+
     HEADER: ClassVar[str] = (
         "{| class=\"wikitable sortable\"\n"
         "! User !! Section !! Words !! Uncollapsed&nbsp;words !! Limit !! Status\n"
@@ -474,14 +516,14 @@ class RequestTable:
             return heading_line + "\n''No word‑limited statements.''"
 
         rows = []
-        for s in self.statements:
+        for s in self.author_totals():
             if not s.user:
                 continue
             style = f" style=\"background:{s.colour}\"" if s.colour else ""
             rows.append(
                 f"|-{style}\n"
                 f"| [[User:{s.user}|{s.user}]] "
-                f"|| [[{board_page}#{s.anchor}|link]] "
+                f"|| {s.section_links(board_page)} "
                 f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value}"
             )
         return heading_line + "\n" + self.HEADER + "\n".join(rows) + "\n|}"
@@ -496,7 +538,7 @@ class RequestTable:
             return heading_line + "\n''No word‑limited statements.''"
 
         rows = []
-        for s in self.statements:
+        for s in self.author_totals():
             if not s.user:
                 continue
             style = f" style=\"background:{s.colour}\"" if s.colour else ""
@@ -520,7 +562,7 @@ class RequestTable:
             rows.append(
                 f"|-{style}\n"
                 f"| [[User:{s.user}|{s.user}]] "
-                f"|| [[{board_page}#{s.anchor}|link]] "
+                f"|| {s.section_links(board_page)} "
                 f"|| {s.visible} || {s.expanded} || {s.limit} || {s.status.value} "
                 f"{template_cell}"
             )
@@ -666,6 +708,7 @@ class RawSection:
     end: int
     heading_start: int
     subtree_end: int
+    anchor: str
 
     def body(self, text: str) -> str:
         return text[self.start : self.end]
@@ -676,7 +719,14 @@ class RawSection:
 
 
 def scan_sections(text: str) -> list[RawSection]:
-    heads = list(HEADING_RE.finditer(text))
+    # Only parsed headings reserve IDs. Equal-length markers retain source
+    # offsets while excluding examples in comments, nowiki, and other literals.
+    code = mwpfh.parse(text)
+    for heading in code.filter_headings():
+        code.replace(heading, mwpfh.nodes.Text("\0" * len(str(heading))), recursive=True)
+    markers = str(code)
+    heads = [h for h in HEADING_RE.finditer(text) if markers[h.start()] == "\0"]
+    anchors = list(heading_anchors(h.group(2) for h in heads))
     return [
         RawSection(
             len(h.group(1)),
@@ -686,6 +736,7 @@ def scan_sections(text: str) -> list[RawSection]:
             h.start(),
             next((other.start() for other in heads[i + 1:]
                   if len(other.group(1)) <= len(h.group(1))), len(text)),
+            anchors[i],
         )
         for i, h in enumerate(heads)
     ]
@@ -784,10 +835,12 @@ def is_placeholder_user(user: str) -> bool:
 class SimpleBoardParser(BaseParser):
     def parse(self, text: str) -> list[RequestTable]:
         code = mwpfh.parse(text, skip_style_tags=True)
+        headings = code.filter_headings()
+        anchors = dict(zip((id(h) for h in headings), heading_anchors(h.title for h in headings)))
         tables: list[RequestTable] = []
         for lvl2 in code.get_sections(levels=[2]):
             sec_title = mwpfh.parse(lvl2.filter_headings()[0].title, skip_style_tags=True).strip_code().strip()
-            anchor = slugify(sec_title)
+            anchor = anchors[id(lvl2.filter_headings()[0])]
             sec_wikitext = str(lvl2)
             closed = bool(HAT_OPEN_RE.match(sec_wikitext.partition("\n")[2].lstrip()))
 
@@ -810,7 +863,7 @@ class SimpleBoardParser(BaseParser):
                 if is_placeholder_user(raw_user):
                     continue
                 body = str(st).split("\n", 1)[1]
-                statements.append(self._make_statement(raw_user, body, slugify(heading)))
+                statements.append(self._make_statement(raw_user, body, anchors[id(st.filter_headings()[0])]))
 
             tables.append(RequestTable(sec_title, anchor, statements, closed))
         return tables
@@ -830,7 +883,7 @@ class AEParser(BaseParser):
             if sec.level == 2:
                 body_full = sec.subtree_body(text)
                 closed = bool(HAT_OPEN_RE.match(body_full.lstrip()))
-                current = RequestTable(sec.title, slugify(sec.title), [], closed)
+                current = RequestTable(sec.title, sec.anchor, [], closed)
                 tables.append(current)
                 continue
 
@@ -843,7 +896,7 @@ class AEParser(BaseParser):
                     continue
                 body = self._without_nested_replies(sec, text)
                 current.statements.append(
-                    self._make_statement(raw_user, body, slugify(sec.title))
+                    self._make_statement(raw_user, body, sec.anchor)
                 )
 
             elif sec.level == 3 and sec.title.lower().startswith("request concerning"):
@@ -851,7 +904,7 @@ class AEParser(BaseParser):
                 if body:
                     user = self._requesting_user(sec, text)
                     current.statements.append(
-                        self._make_statement(user, body, slugify(sec.title))
+                        self._make_statement(user, body, sec.anchor)
                     )
 
         return tables
@@ -909,7 +962,7 @@ class EvidenceParser(BaseParser):
                 body = sec.subtree_body(text)
                 
                 statements.append(
-                    self._make_statement(raw_user, body, slugify(sec.title))
+                    self._make_statement(raw_user, body, sec.anchor)
                 )
         
         if statements:
@@ -1033,13 +1086,13 @@ def assemble_data_template_from_data(parsed_data: ParsedData) -> str:
     for label, tables in parsed_data.boards.items():
         for tbl in tables:
             data.setdefault(label, {}).setdefault(tbl.title, {})
-            for stmt in tbl.statements:
+            for stmt in tbl.author_totals():
                 data[label][tbl.title][stmt.user] = stmt
     
     for case_name, tables in parsed_data.evidence.items():
         for tbl in tables:
             data.setdefault("Case pages", {}).setdefault(tbl.title, {})
-            for stmt in tbl.statements:
+            for stmt in tbl.author_totals():
                 data["Case pages"][tbl.title][stmt.user] = stmt
 
     parts: list[str] = []
@@ -1188,7 +1241,7 @@ def generate_reports(data: ParsedData) -> ReportContent:
         all_tables.extend(tables)
 
     open_tables = [tbl for tbl in all_tables if not tbl.closed]
-    all_statements = [s for tbl in open_tables for s in tbl.statements]
+    all_statements = [s for tbl in open_tables for s in tbl.author_totals()]
     
     over = sum(1 for s in all_statements if s.status == Status.OVER)
     within = sum(1 for s in all_statements if s.status == Status.WITHIN)
