@@ -62,3 +62,41 @@ def test_nested_excluded_elements_are_safe(mock_site, mock_cache):
     html = '<p>Visible <span style="display: none">hidden <span style="display:none">nested</span></span> text.</p>'
     with patch.object(bot, "_api_render", return_value=html):
         assert bot.visible_word_count(mock_site, "source") == 2
+
+
+@pytest.mark.parametrize("color,valid", [
+    ("hsl(0,0,0)", False),
+    ("hwb(0,0%,0%)", False),
+    ("rgb(0,none,0)", False),
+    ("rgb(0,0%,0)", False),
+    ("rgb(0,0,0,none)", False),
+    ("hsl(none,0%,0%)", False),
+    ("rgb(0 0% 0)", True),
+    ("rgb(0+0+0)", True),
+    ("rgb(0-0-0)", True),
+    ("rgb(0/**/0/**/0)", True),
+    ("rgb(0%0%0%)", True),
+    ("rgb(0 0 0 / none)", True),
+    ("hsl(0DEG 0% 0%)", True),
+    ("hsl(0 0% 0)", True),
+    ("hsl(0deg,0%,0%,50%)", True),
+    ("hwb(none 0% 0 / none)", True),
+    ("lab(50% 0 none / none)", True),
+    ("lch(50% 0 0TURN)", True),
+    ("oklab(50% 0 0 / 50%)", True),
+    ("oklch(50% 0 none)", True),
+    ("color(srgb 0 0% none / none)", True),
+    ("color(xyz-d50 0% 0 0)", True),
+    ("lab(50%,0,0)", False),
+    ("color(srgb 0,0,0)", False),
+    ("rgb(0 0 0 none)", False),
+    ("hsl(0px 0% 0%)", False),
+    ("color()", False),
+    ("color(banana 0 0 0)", False),
+])
+def test_literal_color_grammar_controls_strike_count(mock_site, mock_cache, color, valid):
+    html = f'<p>Visible <span style="text-decoration:line-through {color}">three extra words</span> end.</p>'
+    with patch.object(bot, "_api_render", return_value=html):
+        assert bot.visible_word_count(mock_site, "source") == (2 if valid else 5)
+    # Invalid declarations must not reset an earlier valid strike.
+    assert bot.excluded_inline_style(f"text-decoration:line-through; text-decoration:{color}") is not valid

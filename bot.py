@@ -624,6 +624,63 @@ def _api_render(site: APISite, wikitext: str, title: str | None = None) -> str:
     CACHE.cache_rendered_html(key, html)
     return html
 
+def valid_literal_color(token) -> bool:
+    """Validate CSS Color 4 literal syntax without converting channel values.
+
+    tinycss2's color conversion accepts some invalid legacy functions and
+    rejects valid mixed modern channels/none alpha, so validate functions here.
+    https://www.w3.org/TR/css-color-4/#color-syntax
+    """
+    if token.type != "function":
+        return token.type in {"ident", "hash"} and parse_color(token) is not None
+    name = token.lower_name
+    args = [part for part in token.arguments if part.type not in {"whitespace", "comment"}]
+    legacy = any(part == "," for part in args)
+    if legacy:
+        if (name not in {"rgb", "rgba", "hsl", "hsla"}
+                or len(args) not in {5, 7} or not all(part == "," for part in args[1::2])):
+            return False
+        args = args[::2]
+    else:
+        if name == "color":
+            if not args or args[0].type != "ident" or args[0].lower_value not in {
+                "srgb", "srgb-linear", "display-p3", "display-p3-linear", "a98-rgb",
+                "prophoto-rgb", "rec2020", "xyz", "xyz-d50", "xyz-d65",
+            }:
+                return False
+            args = args[1:]
+        if len(args) == 5 and args[3] == "/":
+            args = args[:3] + args[4:]
+        elif len(args) != 3:
+            return False
+
+    def missing(part):
+        return not legacy and part.type == "ident" and part.lower_value == "none"
+
+    def channel(part):
+        return part.type in {"number", "percentage"} or missing(part)
+
+    def hue(part):
+        return (part.type == "number" or missing(part)
+                or (part.type == "dimension" and part.lower_unit in {"deg", "grad", "rad", "turn"}))
+
+    if len(args) == 4 and not channel(args[3]):
+        return False
+    channels = args[:3]
+    if name in {"rgb", "rgba"}:
+        return (all(channel(part) for part in channels)
+                and (not legacy or len({part.type for part in channels}) == 1))
+    if name in {"hsl", "hsla", "hwb"}:
+        return (hue(channels[0]) and all(
+            part.type == "percentage" if legacy else channel(part)
+            for part in channels[1:]))
+    if name in {"lch", "oklch"}:
+        return all(channel(part) for part in channels[:2]) and hue(channels[2])
+    if name in {"lab", "oklab", "color"}:
+        return all(channel(part) for part in channels)
+    return False
+
+
 def literal_style_exclusion(name: str, values: list) -> bool | None:
     """Validate literal property values; None means invalid/unsupported.
 
@@ -683,13 +740,7 @@ def literal_style_exclusion(name: str, values: list) -> bool | None:
               or (token.type == "dimension" and token.lower_unit in length_units)):
             category = "thickness"
         else:
-            try:
-                color = parse_color(token)
-            except (ValueError, TypeError, IndexError, OverflowError):
-                # Some malformed functions (notably color()) raise instead
-                # of returning None in tinycss2. Ignore the declaration.
-                return None
-            if color is None:
+            if not valid_literal_color(token):
                 return None
             category = "color"
         if category in seen:
